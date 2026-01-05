@@ -69,7 +69,7 @@ v4 :: struct ($T := f32) {
     #overlay (w) a : T; @JsonIgnore
 
     #overlay (x) fields : [4] T; @JsonIgnore
-    #overlay (x) xyz    : v3f; @JsonIgnore
+    #overlay (x) xyz    : v3(T); @JsonIgnore
 }
 
 f32 :: float32;
@@ -93,6 +93,13 @@ __MY_VECTORS :: Type.[
     v4(float), v4(s64), v4(s32), v4(u64), v4(u32),
 ];
 
+V2_ZERO     :: v2f.{  0,  0 };
+V2_ONE      :: v2f.{  1,  1 };
+V2_UP       :: v2f.{  0,  1 };
+V2_DOWN     :: v2f.{  0, -1 };
+V2_RIGHT    :: v2f.{  1,  0 };
+V2_LEFT     :: v2f.{ -1,  0 };
+
 V3_ZERO     :: v3f.{  0,  0,  0 };
 V3_ONE      :: v3f.{  1,  1,  1 };
 V3_UP       :: v3f.{  0,  1,  0 };
@@ -102,14 +109,10 @@ V3_BACKWARD :: v3f.{  0,  0, -1 };
 V3_RIGHT    :: v3f.{  1,  0,  0 };
 V3_LEFT     :: v3f.{ -1,  0,  0 };
 
-V2_ZERO     :: v2f.{  0,  0 };
-V2_ONE      :: v2f.{  1,  1 };
-V2_UP       :: v2f.{  0,  1 };
-V2_DOWN     :: v2f.{  0, -1 };
-V2_RIGHT    :: v2f.{  1,  0 };
-V2_LEFT     :: v2f.{ -1,  0 };
+V4_ONE  :: v4f.{ 1, 1, 1, 1 };
+V4_ZERO :: v4f.{ 0, 0, 0, 0 };
 
-Color :: #type,distinct v4f;
+Color :: #type,distinct v4(u8);
 
 //
 // @note: Apparently distinct types don't get the operator overloads??
@@ -120,36 +123,6 @@ operator + :: (a: Color, b: Color) -> Color { return .{ a.x + b.x, a.y + b.y, a.
 operator - :: (a: Color, b: Color) -> Color { return .{ a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w }; }
 operator * :: (a: Color, b: Color) -> Color { return .{ a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w }; }
 operator * :: (a: Color, x: float) -> Color { return .{ a.x * x, a.y * x, a.z * x, a.w * x }; }
-
-COLOR_WHITE     :: Color.{ 1, 1, 1, 1 };
-COLOR_BLACK     :: Color.{ 0, 0, 0, 1 };
-COLOR_RED       :: Color.{ 1, 0, 0, 1 };
-COLOR_GREEN     :: Color.{ 0, 1, 0, 1 };
-COLOR_BLUE      :: Color.{ 0, 0, 1, 1 };
-COLOR_ORANGE    :: Color.{ 1.0, 0.5, 0.0, 1.0 };
-COLOR_PURPLE    :: Color.{ 0.5, 0.0, 0.5, 1.0 };
-COLOR_PINK      :: Color.{ 1.0, 0.4, 0.7, 1.0 };
-COLOR_YELLOW    :: Color.{ 1.0, 1.0, 0.0, 1.0 };
-COLOR_CYAN      :: Color.{ 0.0, 1.0, 1.0, 1.0 };
-COLOR_MAGENTA   :: Color.{ 1.0, 0.0, 1.0, 1.0 };
-COLOR_BROWN     :: Color.{ 0.6, 0.3, 0.0, 1.0 };
-COLOR_LIME      :: Color.{ 0.7, 1.0, 0.0, 1.0 };
-COLOR_TEAL      :: Color.{ 0.0, 0.5, 0.5, 1.0 };
-COLOR_INDIGO    :: Color.{ 0.3, 0.0, 0.5, 1.0 };
-COLOR_MAROON    :: Color.{ 0.5, 0.0, 0.0, 1.0 };
-COLOR_GOLD      :: Color.{ 1.0, 0.84, 0.0, 1.0 };
-COLOR_SILVER    :: Color.{ 0.75, 0.75, 0.75, 1.0 };
-COLOR_SLATE     :: Color.{ 0.44, 0.5, 0.56, 1.0 };
-COLOR_CORAL     :: Color.{ 1.0, 0.5, 0.31, 1.0 };
-COLOR_TURQUOISE :: Color.{ 0.25, 0.88, 0.82, 1.0 };
-COLOR_MINT      :: Color.{ 0.6, 1.0, 0.6, 1.0 };
-COLOR_LAVENDER  :: Color.{ 0.9, 0.9, 0.98, 1.0 };
-COLOR_NAVY      :: Color.{ 0.0, 0.0, 0.5, 1.0 };
-COLOR_CHARCOAL  :: Color.{ 0.2, 0.2, 0.2, 1.0 };
-COLOR_IVORY     :: Color.{ 1.0, 1.0, 0.94, 1.0 };
-COLOR_SALMON    :: Color.{ 0.98, 0.5, 0.45, 1.0 };
-COLOR_PEACH     :: Color.{ 1.0, 0.85, 0.73, 1.0 };
-COLOR_SKY_BLUE  :: Color.{ 0.53, 0.81, 0.98, 1.0 };
 
 floor_to_int :: (x: float) -> int { return xx floor(x); }
 
@@ -459,6 +432,28 @@ min :: inline (v1: v3f, v2: v3f) -> v3f {
 
 min :: inline (v1: v4f, v2: v4f) -> v4f {
     return .{Min(v1.x, v2.x), Min(v1.y, v2.y), Min(v1.z, v2.z), Min(v1.w, v2.w)};
+}
+
+min :: (nums: [] $T) -> T
+#modify {
+    return IsScalar(T);
+} {
+    result := nums[0];
+
+    for 1..nums.count-1  result = min(result, nums[it]);
+
+    return result;
+}
+
+max :: (nums: [] $T) -> T
+#modify {
+    return IsScalar(T);
+} {
+    result := nums[0];
+
+    for 1..nums.count-1  result = max(result, nums[it]);
+
+    return result;
 }
 
 max :: inline (v1: v2f, v2: v2f) -> v2f {
