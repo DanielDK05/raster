@@ -3390,10 +3390,10 @@ make_look_at_matrix :: (viewpoint: v3f,
     forward := look_at - viewpoint;
     normalize(*forward, fallback=.{z=1});
 
-    left := cross_product(reference_up_vector, forward);
+    left := cross(reference_up_vector, forward);
     normalize(*left, fallback=.{z=1});
 
-    up := cross_product(forward, left);
+    up := cross(forward, left);
     normalize(*up, fallback=.{z=1});  // Just for accuracy's sake.
 
     // We are making the inverse of the transform that takes axis_forward to the forward vector.
@@ -3452,8 +3452,7 @@ orthographic_projection_matrix :: (left: float, right: float, bottom: float, top
 // projection matrix returned here, to swizzle around the result of the
 // x-forward view matrix.
 //
-make_projection_matrix :: (fov_vertical: float, aspect_ratio_horizontal_over_vertical: float, z_near: float, z_far: float, x_offset:=0.0, y_offset:=0.0, depth_range_01:=false) -> Matrix4 {
-    result := Matrix4_Identity;
+make_projection_matrix :: (fov_vertical: float, aspect_ratio_horizontal_over_vertical: float, z_near: float, z_far: float, x_offset:=0.0, y_offset:=0.0, depth_range_01:=false) -> Matrix4 { result := Matrix4_Identity;
 
     tan_theta := tan(fov_vertical * 0.5);
     cot_theta := 1 / tan_theta;
