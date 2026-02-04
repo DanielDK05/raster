@@ -140,6 +140,7 @@ quaternion_from_euler :: (using euler: v3f) -> Quaternion {
            quaternion_from_axis_angle(.{ 1, 0, 0 }, pitch);
 }
 
+get_forward :: (t: Transform) -> v3f { return get_forward(t.rotation); }
 get_forward :: (q: Quaternion) -> v3f {
     normalized := q;
     normalize_or_identity(*normalized);

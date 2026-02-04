@@ -23,8 +23,16 @@ Cull_Mode :: enum {
     BACK;
 }
 
+FREECAM_LOOK_SENSITIVITY :: 0.005;
+FREECAM_SPEED :: 4.0;
+
+freecam_transform : Transform = {
+    position.z = -2,
+};
+freecam_pitch     : float;
+freecam_yaw       : float;
+
 pixels: [] Color;
-position: v3f;
 
 main :: () {
     rl.InitWindow(xx RESOLUTION.x, xx RESOLUTION.y, TITLE);
@@ -44,21 +52,9 @@ main :: () {
 
     texture := rl.LoadTextureFromImage(image);
 
-    transform: Transform;
     t := 0.0;
 
-    position = {0, 0, -2};
-
     while !rl.WindowShouldClose() {
-        if rl.IsKeyDown(.KEY_W) position.z += 1.1 * rl.GetFrameTime();
-        if rl.IsKeyDown(.KEY_S) position.z -= 1.1 * rl.GetFrameTime();
-        if rl.IsKeyDown(.KEY_A) position.x -= 1.1 * rl.GetFrameTime();
-        if rl.IsKeyDown(.KEY_D) position.x += 1.1 * rl.GetFrameTime();
-        if rl.IsKeyDown(.KEY_SPACE) position.y += 1.1 * rl.GetFrameTime();
-        if rl.IsKeyDown(.KEY_LEFT_SHIFT) position.y -= 1.1 * rl.GetFrameTime();
-
-        log("pos: %", position);
-
         rl.BeginDrawing();
         defer rl.EndDrawing();
 
@@ -68,6 +64,8 @@ main :: () {
 
         t += rl.GetFrameTime();
         // transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+
+        update_freecam(rl.GetFrameTime());
 
         // Update pixels
         {
@@ -120,7 +118,7 @@ main :: () {
                         16, 19, 18,  16, 18, 17, // Right
                         23, 20, 21,  23, 21, 22, // Left
                     ],                },
-                    transform = m4x4(transform),
+                    transform = m4x4(Transform.{}),
                     cull_mode = .BACK,
                 });
             }
@@ -132,13 +130,49 @@ main :: () {
     }
 }
 
+update_freecam :: (dt: float) {
+    // Rotation
+    if rl.IsMouseButtonDown(.MOUSE_BUTTON_RIGHT) {
+        delta := rl.GetMouseDelta();
+
+        freecam_pitch += delta.y * FREECAM_LOOK_SENSITIVITY;
+        freecam_yaw   -= delta.x * FREECAM_LOOK_SENSITIVITY;
+
+        freecam_pitch = clamp(freecam_pitch, -PI / 2 + 0.001, PI / 2 - 0.001);
+
+        yaw\ _quat := quaternion_from_axis_angle(.{ 0, 1, 0 }, freecam_yaw);
+        pitch_quat := quaternion_from_axis_angle(.{ 1, 0, 0 }, freecam_pitch);
+        freecam_transform.rotation = pitch_quat * yaw_quat;
+    }
+
+    // Position
+    {
+        velocity: v3f;
+
+        forward := get_forward(freecam_transform);
+        forward.y = 0;
+
+        left := v3f.{ forward.z, 0, -forward.x };
+
+        if rl.IsKeyDown(.KEY_W) then velocity += forward;
+        if rl.IsKeyDown(.KEY_A) then velocity += left;
+        if rl.IsKeyDown(.KEY_S) then velocity -= forward;
+        if rl.IsKeyDown(.KEY_D) then velocity -= left;
+        if rl.IsKeyDown(.KEY_E) then velocity += .{  0,  1,  0 };
+        if rl.IsKeyDown(.KEY_Q) then velocity += .{  0, -1,  0 };
+
+        normalize(*velocity);
+
+        freecam_transform.position += velocity * FREECAM_SPEED * dt;
+    }
+}
+
 draw :: (using draw_call: Draw_Call) {
     i := 0;
 
-    projection := make_projection_matrix(60, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
-    projection.coef[1][1] *= -1;
+    projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
 
-    view := make_look_at_matrix(position, .{}, V3_UP, x_is_forward=false);
+    view := make_look_at_matrix(freecam_transform.position, freecam_transform.position + get_forward(freecam_transform), V3_UP, x_is_forward=false);
 
     mvp := projection * view * transform;
 
@@ -158,8 +192,8 @@ draw :: (using draw_call: Draw_Call) {
 
         if cull_mode == {
             case .NONE;
-            case .FRONT; if !counter_clockwise continue;
-            case .BACK;  if  counter_clockwise continue;
+            case .FRONT; if  counter_clockwise continue;
+            case .BACK;  if !counter_clockwise continue;
         }
 
         if counter_clockwise {
@@ -173,6 +207,10 @@ draw :: (using draw_call: Draw_Call) {
         max_x := max(int.[ xx floor(p0.x), xx floor(p1.x), xx floor(p2.x) ]); max_x = min(RESOLUTION.x, max_x) - 1;
         min_y := min(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); min_y = max(0, min_y);
         max_y := max(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); max_y = min(RESOLUTION.y, max_y) - 1;
+
+        if p0.w < 0.01 || p1.w < 0.01 || p2.w < 0.01 {
+            continue;
+        }
 
         for y: min_y..max_y - 1
         for x: min_x..max_x - 1 {
