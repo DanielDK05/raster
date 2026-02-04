@@ -32,7 +32,8 @@ freecam_transform : Transform = {
 freecam_pitch     : float;
 freecam_yaw       : float;
 
-pixels: [] Color;
+pixels   : [] Color;
+z_buffer : [] float;
 
 main :: () {
     rl.InitWindow(xx RESOLUTION.x, xx RESOLUTION.y, TITLE);
@@ -40,7 +41,8 @@ main :: () {
 
     rl.SetTargetFPS(60);
 
-    pixels = NewArray(RESOLUTION.x * RESOLUTION.y, Color);
+    pixels   = NewArray(RESOLUTION.x * RESOLUTION.y, Color);
+    z_buffer = NewArray(RESOLUTION.x * RESOLUTION.y, float);
 
     image := rl.Image.{
         data = pixels.data,
@@ -53,6 +55,8 @@ main :: () {
     texture := rl.LoadTextureFromImage(image);
 
     t := 0.0;
+    rotating_transform: Transform;
+    rotating_transform.position = { 0.5, 0.2, 0.3 };
 
     while !rl.WindowShouldClose() {
         rl.BeginDrawing();
@@ -60,10 +64,12 @@ main :: () {
 
         rl.ClearBackground(rl.BLACK);
 
+        for * z_buffer it.* = FLOAT32_MAX;
+
         mouse := rl.GetMousePosition();
 
         t += rl.GetFrameTime();
-        // transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+        rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
 
         update_freecam(rl.GetFrameTime());
 
@@ -117,11 +123,64 @@ main :: () {
                         13, 12, 15,  13, 15, 14, // Bottom
                         16, 19, 18,  16, 18, 17, // Right
                         23, 20, 21,  23, 21, 22, // Left
-                    ],                },
-                    transform = m4x4(Transform.{}),
-                    cull_mode = .BACK,
-                });
-            }
+                    ],
+                },
+                transform = m4x4(Transform.{}),
+                cull_mode = .BACK,
+            });
+
+            draw({
+                mesh = {
+                    vertices = .[
+                        // Front (Red) - Z = 0.5
+                        { { -0.5, -0.5,  0.5 }, rl.RED },   // 0
+                        { {  0.5, -0.5,  0.5 }, rl.RED },   // 1
+                        { {  0.5,  0.5,  0.5 }, rl.RED },   // 2
+                        { { -0.5,  0.5,  0.5 }, rl.RED },   // 3
+
+                        // Back (Blue) - Z = -0.5
+                        { { -0.5, -0.5, -0.5 }, rl.BLUE },  // 4
+                        { {  0.5, -0.5, -0.5 }, rl.BLUE },  // 5
+                        { {  0.5,  0.5, -0.5 }, rl.BLUE },  // 6
+                        { { -0.5,  0.5, -0.5 }, rl.BLUE },  // 7
+
+                        // Top (Green) - Y = 0.5
+                        { { -0.5,  0.5,  0.5 }, rl.GREEN }, // 8
+                        { {  0.5,  0.5,  0.5 }, rl.GREEN }, // 9
+                        { {  0.5,  0.5, -0.5 }, rl.GREEN }, // 10
+                        { { -0.5,  0.5, -0.5 }, rl.GREEN }, // 11
+
+                        // Bottom (Yellow) - Y = -0.5
+                        { { -0.5, -0.5,  0.5 }, rl.YELLOW }, // 12
+                        { {  0.5, -0.5,  0.5 }, rl.YELLOW }, // 13
+                        { {  0.5, -0.5, -0.5 }, rl.YELLOW }, // 14
+                        { { -0.5, -0.5, -0.5 }, rl.YELLOW }, // 15
+
+                        // Right (Magenta) - X = 0.5
+                        { {  0.5, -0.5,  0.5 }, rl.MAGENTA }, // 16
+                        { {  0.5,  0.5,  0.5 }, rl.MAGENTA }, // 17
+                        { {  0.5,  0.5, -0.5 }, rl.MAGENTA }, // 18
+                        { {  0.5, -0.5, -0.5 }, rl.MAGENTA }, // 19
+
+                        // Left (Cyan) - X = -0.5
+                        { { -0.5, -0.5,  0.5 }, rl.WHITE },    // 20
+                        { { -0.5,  0.5,  0.5 }, rl.WHITE },    // 21
+                        { { -0.5,  0.5, -0.5 }, rl.WHITE },    // 22
+                        { { -0.5, -0.5, -0.5 }, rl.WHITE },    // 23
+                    ],
+                    indices = .[
+                        0,  1,  2,   0,  2,  3,  // Front
+                        5,  4,  7,   5,  7,  6,  // Back
+                        8,  9,  10,  8,  10, 11, // Top
+                        13, 12, 15,  13, 15, 14, // Bottom
+                        16, 19, 18,  16, 18, 17, // Right
+                        23, 20, 21,  23, 21, 22, // Left
+                    ],
+                },
+                transform = m4x4(rotating_transform),
+                cull_mode = .BACK,
+            });
+        }
 
         rl.UpdateTexture(texture, pixels.data);
 
@@ -229,7 +288,13 @@ draw :: (using draw_call: Draw_Call) {
                 c1 := Color.{ xx (l1 * v1.color.r), xx (l1 * v1.color.g), xx (l1 * v1.color.b), v1.color.a };
                 c2 := Color.{ xx (l2 * v2.color.r), xx (l2 * v2.color.g), xx (l2 * v2.color.b), v2.color.a };
 
-                pixels[x + y * RESOLUTION.x] = c0 + c1 + c2;
+                depth := 1 / ((l0 * (1 / p0.w)) + (l1 * (1 / p1.w)) + (l2 * (1 / p2.w)));
+                
+                index := x + y * RESOLUTION.x;
+                if depth < z_buffer[index] {
+                    z_buffer[index] = depth;
+                    pixels[index] = c0 + c1 + c2;
+                }
             }
         }
     }
