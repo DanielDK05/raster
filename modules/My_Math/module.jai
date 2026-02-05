@@ -2,6 +2,7 @@
 
 #import "Basic";
 #import "Sloppy_Math";
+#import "Hash";
 
 Transform :: struct {
     position :  v3;
