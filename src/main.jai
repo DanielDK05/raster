@@ -26,20 +26,68 @@ Cull_Mode :: enum {
 FREECAM_LOOK_SENSITIVITY :: 0.005;
 FREECAM_SPEED :: 4.0;
 
-freecam_transform : Transform = {
-    position.z = -2,
-};
 freecam_pitch     : float;
 freecam_yaw       : float;
+freecam_transform : Transform = {
+    position.x = 2,
+    position.y = 1,
+    position.z = -2,
+};
 
 pixels   : [] Color;
 z_buffer : [] float;
 
+cube_mesh := Mesh.{
+    vertices = .[
+        // Front (Red) - Z = 0.5
+        { { -0.5, -0.5,  0.5 }, rl.RED },   // 0
+        { {  0.5, -0.5,  0.5 }, rl.RED },   // 1
+        { {  0.5,  0.5,  0.5 }, rl.RED },   // 2
+        { { -0.5,  0.5,  0.5 }, rl.RED },   // 3
+
+        // Back (Blue) - Z = -0.5
+        { { -0.5, -0.5, -0.5 }, rl.BLUE },  // 4
+        { {  0.5, -0.5, -0.5 }, rl.BLUE },  // 5
+        { {  0.5,  0.5, -0.5 }, rl.BLUE },  // 6
+        { { -0.5,  0.5, -0.5 }, rl.BLUE },  // 7
+
+        // Top (Green) - Y = 0.5
+        { { -0.5,  0.5,  0.5 }, rl.GREEN }, // 8
+        { {  0.5,  0.5,  0.5 }, rl.GREEN }, // 9
+        { {  0.5,  0.5, -0.5 }, rl.GREEN }, // 10
+        { { -0.5,  0.5, -0.5 }, rl.GREEN }, // 11
+
+        // Bottom (Yellow) - Y = -0.5
+        { { -0.5, -0.5,  0.5 }, rl.YELLOW }, // 12
+        { {  0.5, -0.5,  0.5 }, rl.YELLOW }, // 13
+        { {  0.5, -0.5, -0.5 }, rl.YELLOW }, // 14
+        { { -0.5, -0.5, -0.5 }, rl.YELLOW }, // 15
+
+        // Right (Magenta) - X = 0.5
+        { {  0.5, -0.5,  0.5 }, rl.MAGENTA }, // 16
+        { {  0.5,  0.5,  0.5 }, rl.MAGENTA }, // 17
+        { {  0.5,  0.5, -0.5 }, rl.MAGENTA }, // 18
+        { {  0.5, -0.5, -0.5 }, rl.MAGENTA }, // 19
+
+        // Left (Cyan) - X = -0.5
+        { { -0.5, -0.5,  0.5 }, rl.WHITE },    // 20
+        { { -0.5,  0.5,  0.5 }, rl.WHITE },    // 21
+        { { -0.5,  0.5, -0.5 }, rl.WHITE },    // 22
+        { { -0.5, -0.5, -0.5 }, rl.WHITE },    // 23
+    ],
+    indices = .[
+        0,  1,  2,   0,  2,  3,  // Front
+        5,  4,  7,   5,  7,  6,  // Back
+        8,  9,  10,  8,  10, 11, // Top
+        13, 12, 15,  13, 15, 14, // Bottom
+        16, 19, 18,  16, 18, 17, // Right
+        23, 20, 21,  23, 21, 22, // Left
+    ],
+};
+
 main :: () {
     rl.InitWindow(xx RESOLUTION.x, xx RESOLUTION.y, TITLE);
     defer rl.CloseWindow();
-
-    rl.SetTargetFPS(60);
 
     pixels   = NewArray(RESOLUTION.x * RESOLUTION.y, Color);
     z_buffer = NewArray(RESOLUTION.x * RESOLUTION.y, float);
@@ -65,121 +113,28 @@ main :: () {
         rl.ClearBackground(rl.BLACK);
 
         for * z_buffer it.* = FLOAT32_MAX;
+        for * pixels it.* = rl.BLACK;
 
         mouse := rl.GetMousePosition();
 
         t += rl.GetFrameTime();
-        rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+        // rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
 
         update_freecam(rl.GetFrameTime());
 
         // Update pixels
         {
-            for * pixels it.* = rl.BLACK;
-
-            draw({
-                mesh = {
-                    vertices = .[
-                        // Front (Red) - Z = 0.5
-                        { { -0.5, -0.5,  0.5 }, rl.RED },   // 0
-                        { {  0.5, -0.5,  0.5 }, rl.RED },   // 1
-                        { {  0.5,  0.5,  0.5 }, rl.RED },   // 2
-                        { { -0.5,  0.5,  0.5 }, rl.RED },   // 3
-
-                        // Back (Blue) - Z = -0.5
-                        { { -0.5, -0.5, -0.5 }, rl.BLUE },  // 4
-                        { {  0.5, -0.5, -0.5 }, rl.BLUE },  // 5
-                        { {  0.5,  0.5, -0.5 }, rl.BLUE },  // 6
-                        { { -0.5,  0.5, -0.5 }, rl.BLUE },  // 7
-
-                        // Top (Green) - Y = 0.5
-                        { { -0.5,  0.5,  0.5 }, rl.GREEN }, // 8
-                        { {  0.5,  0.5,  0.5 }, rl.GREEN }, // 9
-                        { {  0.5,  0.5, -0.5 }, rl.GREEN }, // 10
-                        { { -0.5,  0.5, -0.5 }, rl.GREEN }, // 11
-
-                        // Bottom (Yellow) - Y = -0.5
-                        { { -0.5, -0.5,  0.5 }, rl.YELLOW }, // 12
-                        { {  0.5, -0.5,  0.5 }, rl.YELLOW }, // 13
-                        { {  0.5, -0.5, -0.5 }, rl.YELLOW }, // 14
-                        { { -0.5, -0.5, -0.5 }, rl.YELLOW }, // 15
-
-                        // Right (Magenta) - X = 0.5
-                        { {  0.5, -0.5,  0.5 }, rl.MAGENTA }, // 16
-                        { {  0.5,  0.5,  0.5 }, rl.MAGENTA }, // 17
-                        { {  0.5,  0.5, -0.5 }, rl.MAGENTA }, // 18
-                        { {  0.5, -0.5, -0.5 }, rl.MAGENTA }, // 19
-
-                        // Left (Cyan) - X = -0.5
-                        { { -0.5, -0.5,  0.5 }, rl.WHITE },    // 20
-                        { { -0.5,  0.5,  0.5 }, rl.WHITE },    // 21
-                        { { -0.5,  0.5, -0.5 }, rl.WHITE },    // 22
-                        { { -0.5, -0.5, -0.5 }, rl.WHITE },    // 23
-                    ],
-                    indices = .[
-                        0,  1,  2,   0,  2,  3,  // Front
-                        5,  4,  7,   5,  7,  6,  // Back
-                        8,  9,  10,  8,  10, 11, // Top
-                        13, 12, 15,  13, 15, 14, // Bottom
-                        16, 19, 18,  16, 18, 17, // Right
-                        23, 20, 21,  23, 21, 22, // Left
-                    ],
-                },
-                transform = m4x4(Transform.{}),
-                cull_mode = .BACK,
-            });
-
-            draw({
-                mesh = {
-                    vertices = .[
-                        // Front (Red) - Z = 0.5
-                        { { -0.5, -0.5,  0.5 }, rl.RED },   // 0
-                        { {  0.5, -0.5,  0.5 }, rl.RED },   // 1
-                        { {  0.5,  0.5,  0.5 }, rl.RED },   // 2
-                        { { -0.5,  0.5,  0.5 }, rl.RED },   // 3
-
-                        // Back (Blue) - Z = -0.5
-                        { { -0.5, -0.5, -0.5 }, rl.BLUE },  // 4
-                        { {  0.5, -0.5, -0.5 }, rl.BLUE },  // 5
-                        { {  0.5,  0.5, -0.5 }, rl.BLUE },  // 6
-                        { { -0.5,  0.5, -0.5 }, rl.BLUE },  // 7
-
-                        // Top (Green) - Y = 0.5
-                        { { -0.5,  0.5,  0.5 }, rl.GREEN }, // 8
-                        { {  0.5,  0.5,  0.5 }, rl.GREEN }, // 9
-                        { {  0.5,  0.5, -0.5 }, rl.GREEN }, // 10
-                        { { -0.5,  0.5, -0.5 }, rl.GREEN }, // 11
-
-                        // Bottom (Yellow) - Y = -0.5
-                        { { -0.5, -0.5,  0.5 }, rl.YELLOW }, // 12
-                        { {  0.5, -0.5,  0.5 }, rl.YELLOW }, // 13
-                        { {  0.5, -0.5, -0.5 }, rl.YELLOW }, // 14
-                        { { -0.5, -0.5, -0.5 }, rl.YELLOW }, // 15
-
-                        // Right (Magenta) - X = 0.5
-                        { {  0.5, -0.5,  0.5 }, rl.MAGENTA }, // 16
-                        { {  0.5,  0.5,  0.5 }, rl.MAGENTA }, // 17
-                        { {  0.5,  0.5, -0.5 }, rl.MAGENTA }, // 18
-                        { {  0.5, -0.5, -0.5 }, rl.MAGENTA }, // 19
-
-                        // Left (Cyan) - X = -0.5
-                        { { -0.5, -0.5,  0.5 }, rl.WHITE },    // 20
-                        { { -0.5,  0.5,  0.5 }, rl.WHITE },    // 21
-                        { { -0.5,  0.5, -0.5 }, rl.WHITE },    // 22
-                        { { -0.5, -0.5, -0.5 }, rl.WHITE },    // 23
-                    ],
-                    indices = .[
-                        0,  1,  2,   0,  2,  3,  // Front
-                        5,  4,  7,   5,  7,  6,  // Back
-                        8,  9,  10,  8,  10, 11, // Top
-                        13, 12, 15,  13, 15, 14, // Bottom
-                        16, 19, 18,  16, 18, 17, // Right
-                        23, 20, 21,  23, 21, 22, // Left
-                    ],
-                },
-                transform = m4x4(rotating_transform),
-                cull_mode = .BACK,
-            });
+            for x: 0..4
+            for z: 0..4 {
+                transform := rotating_transform;
+                transform.position.x = xx x;
+                transform.position.z = xx z;
+                draw({
+                    mesh = cube_mesh,
+                    transform = m4x4(transform),
+                    cull_mode = .BACK,
+                });
+            }
         }
 
         rl.UpdateTexture(texture, pixels.data);
@@ -262,33 +217,38 @@ draw :: (using draw_call: Draw_Call) {
             det012 = -det012;
         }
 
+        // @todo: improve this detection
+        if p0.w < 0.01 || p1.w < 0.01 || p2.w < 0.01 {
+            continue;
+        }
+
         min_x := min(int.[ xx floor(p0.x), xx floor(p1.x), xx floor(p2.x) ]); min_x = max(0, min_x);
         max_x := max(int.[ xx floor(p0.x), xx floor(p1.x), xx floor(p2.x) ]); max_x = min(RESOLUTION.x, max_x) - 1;
         min_y := min(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); min_y = max(0, min_y);
         max_y := max(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); max_y = min(RESOLUTION.y, max_y) - 1;
 
-        if p0.w < 0.01 || p1.w < 0.01 || p2.w < 0.01 {
-            continue;
-        }
+        inv_det := 1.0 / det012;
+        inv_w0  := 1.0 / p0.w;
+        inv_w1  := 1.0 / p1.w;
+        inv_w2  := 1.0 / p2.w;
 
         for y: min_y..max_y - 1
         for x: min_x..max_x - 1 {
             p := v4f.{ x + 0.5, y + 0.5, 0, 0 };
-
             det_a := det2d(p1 - p0, p - p0);
             det_b := det2d(p2 - p1, p - p1);
             det_c := det2d(p0 - p2, p - p2);
 
-            if det_a >= 0 && det_b >= 0 && det_c >= 0 {
-                l0 := det_b / det012;
-                l1 := det_c / det012;
-                l2 := det_a / det012;
+            if (cast(s32, det_a) | cast(s32, det_b) | cast(s32, det_c)) >= 0 {
+                l0 := det_b * inv_det;
+                l1 := det_c * inv_det;
+                l2 := det_a * inv_det;
 
                 c0 := Color.{ xx (l0 * v0.color.r), xx (l0 * v0.color.g), xx (l0 * v0.color.b), v0.color.a };
                 c1 := Color.{ xx (l1 * v1.color.r), xx (l1 * v1.color.g), xx (l1 * v1.color.b), v1.color.a };
                 c2 := Color.{ xx (l2 * v2.color.r), xx (l2 * v2.color.g), xx (l2 * v2.color.b), v2.color.a };
 
-                depth := 1 / ((l0 * (1 / p0.w)) + (l1 * (1 / p1.w)) + (l2 * (1 / p2.w)));
+                depth := 1 / ((l0 * inv_w0) + (l1 * inv_w1) + (l2 * inv_w2));
                 
                 index := x + y * RESOLUTION.x;
                 if depth < z_buffer[index] {
