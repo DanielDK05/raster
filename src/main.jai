@@ -231,33 +231,51 @@ draw :: (using draw_call: Draw_Call) {
 
         inv_det := 1.0 / det012;
 
-        x := min_x;
-        y := min_y;
+        dx01 := p1.x - p0.x; dy01 := p1.y - p0.y;
+        dx12 := p2.x - p1.x; dy12 := p2.y - p1.y;
+        dx20 := p0.x - p2.x; dy20 := p0.y - p2.y;
 
-        for y: min_y..max_y - 1
-        for x: min_x..max_x - 1 {
-            p := v4f.{ x + 0.5, y + 0.5, 0, 0 };
-            det_a := det2d(p1 - p0, p - p0);
-            det_b := det2d(p2 - p1, p - p1);
-            det_c := det2d(p0 - p2, p - p2);
+        step_x01 := -dy01; step_y01 := dx01;
+        step_x12 := -dy12; step_y12 := dx12;
+        step_x20 := -dy20; step_y20 := dx20;
 
-            if (cast(s32, det_a) | cast(s32, det_b) | cast(s32, det_c)) >= 0 {
-                l0 := det_b * inv_det;
-                l1 := det_c * inv_det;
-                l2 := det_a * inv_det;
+        p_start := v4f.{ min_x + 0.5, min_y + 0.5, 0, 0 };
+        row_det_a := det2d(p1 - p0, p_start - p0);
+        row_det_b := det2d(p2 - p1, p_start - p1);
+        row_det_c := det2d(p0 - p2, p_start - p2);
 
-                c0 := Color.{ xx (l0 * v0.color.r), xx (l0 * v0.color.g), xx (l0 * v0.color.b), v0.color.a };
-                c1 := Color.{ xx (l1 * v1.color.r), xx (l1 * v1.color.g), xx (l1 * v1.color.b), v1.color.a };
-                c2 := Color.{ xx (l2 * v2.color.r), xx (l2 * v2.color.g), xx (l2 * v2.color.b), v2.color.a };
+        for y: min_y..max_y - 1 {
+            det_a := row_det_a;
+            det_b := row_det_b;
+            det_c := row_det_c;
 
-                depth := (l0 * p0.w) + (l1 * p1.w) + (l2 * p2.w);
-                
-                index := x + y * RESOLUTION.x;
-                if depth < z_buffer[index] {
-                    z_buffer[index] = depth;
-                    pixels[index] = c0 + c1 + c2;
+            for x: min_x..max_x - 1 {
+                if (cast(s32, det_a) | cast(s32, det_b) | cast(s32, det_c)) >= 0 {
+                    l0 := det_b * inv_det;
+                    l1 := det_c * inv_det;
+                    l2 := det_a * inv_det;
+
+                    c0 := Color.{ xx (l0 * v0.color.r), xx (l0 * v0.color.g), xx (l0 * v0.color.b), v0.color.a };
+                    c1 := Color.{ xx (l1 * v1.color.r), xx (l1 * v1.color.g), xx (l1 * v1.color.b), v1.color.a };
+                    c2 := Color.{ xx (l2 * v2.color.r), xx (l2 * v2.color.g), xx (l2 * v2.color.b), v2.color.a };
+
+                    depth := (l0 * p0.w) + (l1 * p1.w) + (l2 * p2.w);
+
+                    index := x + y * RESOLUTION.x;
+                    if depth < z_buffer[index] {
+                        z_buffer[index] = depth;
+                        pixels[index] = c0 + c1 + c2;
+                    }
                 }
+
+                det_a += step_x01;
+                det_b += step_x12;
+                det_c += step_x20;
             }
+
+            row_det_a += step_y01;
+            row_det_b += step_y12;
+            row_det_c += step_y20;
         }
     }
 }
