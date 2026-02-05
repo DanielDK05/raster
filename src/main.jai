@@ -122,6 +122,7 @@ main :: () {
 
         update_freecam(rl.GetFrameTime());
 
+        time := current_time_monotonic();
         // Update pixels
         {
             for x: 0..4
@@ -136,6 +137,7 @@ main :: () {
                 });
             }
         }
+        log("draw time: %", to_microseconds(current_time_monotonic() - time));
 
         rl.UpdateTexture(texture, pixels.data);
 
@@ -228,9 +230,9 @@ draw :: (using draw_call: Draw_Call) {
         max_y := max(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); max_y = min(RESOLUTION.y, max_y) - 1;
 
         inv_det := 1.0 / det012;
-        inv_w0  := 1.0 / p0.w;
-        inv_w1  := 1.0 / p1.w;
-        inv_w2  := 1.0 / p2.w;
+
+        x := min_x;
+        y := min_y;
 
         for y: min_y..max_y - 1
         for x: min_x..max_x - 1 {
@@ -248,7 +250,7 @@ draw :: (using draw_call: Draw_Call) {
                 c1 := Color.{ xx (l1 * v1.color.r), xx (l1 * v1.color.g), xx (l1 * v1.color.b), v1.color.a };
                 c2 := Color.{ xx (l2 * v2.color.r), xx (l2 * v2.color.g), xx (l2 * v2.color.b), v2.color.a };
 
-                depth := 1 / ((l0 * inv_w0) + (l1 * inv_w1) + (l2 * inv_w2));
+                depth := (l0 * p0.w) + (l1 * p1.w) + (l2 * p2.w);
                 
                 index := x + y * RESOLUTION.x;
                 if depth < z_buffer[index] {
@@ -269,7 +271,7 @@ screen_to_viewport :: (using vec: v4f) -> v4f {
     };
 }
 
-perspective_divide :: (using vec: v4f) -> v4f {
+perspective_divide :: inline (using vec: v4f) -> v4f {
     result := vec;
 
     result.x /= w;
@@ -279,11 +281,12 @@ perspective_divide :: (using vec: v4f) -> v4f {
     return result;
 }
 
-det2d :: (v0: v4f, v1: v4f) -> float {
+det2d :: inline (v0: v4f, v1: v4f) -> float {
     return v0.x * v1.y - v0.y * v1.x;
 }
 
 #import "Random";
 #import "Basic";
+#import "SIMD";
 #import "My_Math";
 rl :: #import "raylib";
