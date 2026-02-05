@@ -34,11 +34,18 @@ main :: () {
         update_freecam(rl.GetFrameTime());
         set_camera_pose(freecam_transform);
 
-        draw({
-            model = model,
-            transform = m4x4(rotating_transform),
-            cull_mode = .BACK,
-        });
+        for x: 0..9
+        for z: 0..9 {
+            transform := rotating_transform;
+            transform.position.x = xx (x * 2);
+            transform.position.z = xx (z * 2);
+
+            draw({
+                model = model,
+                transform = m4x4(transform),
+                cull_mode = .BACK,
+            });
+        }
     }
 }
 
