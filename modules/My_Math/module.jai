@@ -115,6 +115,8 @@ V4_ZERO :: v4f.{ 0, 0, 0, 0 };
 
 Color :: #type,distinct v4(u8);
 
+operator == :: (a: Color, b: Color) -> bool { return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w; }
+
 //
 // @note: Apparently distinct types don't get the operator overloads??
 //        I don't feel like looking into it rn, so I'm just putting custom Color overloads here
@@ -376,6 +378,7 @@ normalize :: (v: v3f, epsilon := 0.0, fallback := v3f.{}) -> v3f {
 get_hash :: (vec: v2) -> u32 { return get_hash(vec.T.[vec.x, vec.y]); }
 get_hash :: (vec: v3) -> u32 { return get_hash(vec.T.[vec.x, vec.y, vec.z]); }
 get_hash :: (vec: v4) -> u32 { return get_hash(vec.T.[vec.x, vec.y, vec.z, vec.w]); }
+get_hash :: (vec: Color) -> u32 { return get_hash(vec.T.[vec.x, vec.y, vec.z, vec.w]); }
 
 _v2f :: (a: float) -> v2f { return .{ a, a }; }
 _v3f :: (a: float) -> v3f { return .{ a, a, a }; }

@@ -1,4 +1,6 @@
 RESOLUTION :: v2i.{1280, 720};
+TILE_SIZE :: 16;
+TOTAL_TILES :: #run (RESOLUTION.x / TILE_SIZE) * (RESOLUTION.y / TILE_SIZE);
 TITLE :: "raster";
 
 Model_ID :: #type,distinct int;
@@ -50,12 +52,56 @@ freecam_transform : Transform = {
     position.z = -2,
 };
 
+texture: rl.Texture2D;
 pixels   : [] Color;
 z_buffer : [] float;
 
+thread_group: Thread_Group;
+
+draw_calls: [..] Draw_Call;
+tiles: [TOTAL_TILES][..] Tile_Bin;
+
+Tile_Bin :: struct {
+    triangle_start_i: int;
+    draw_call_idx: int;
+}
+
 main :: () {
+    open_window();
+    defer close_window();
+
+    success, model := read_obj_file("assets/model.obj");
+    if !success then return;
+
+    for * model.meshes[0].vertices  it.color = { xx (random_get_zero_to_one() * 255), xx (random_get_zero_to_one() * 255), xx (random_get_zero_to_one() * 255), 255 };
+
+    t := 0.0;
+    rotating_transform: Transform;
+    rotating_transform.position = { 0.5, 0.2, 0.3 };
+
+    while !rl.WindowShouldClose() {
+        defer reset_temporary_storage();
+
+        begin_drawing();
+        defer end_drawing();
+
+        t += rl.GetFrameTime();
+        // rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+
+        update_freecam(rl.GetFrameTime());
+
+        draw({
+            model = model,
+            transform = m4x4(rotating_transform),
+            cull_mode = .BACK,
+        });
+    }
+}
+
+open_window :: () {
+    init_thread_group_stuff();
+
     rl.InitWindow(xx RESOLUTION.x, xx RESOLUTION.y, TITLE);
-    defer rl.CloseWindow();
 
     pixels   = NewArray(RESOLUTION.x * RESOLUTION.y, Color);
     z_buffer = NewArray(RESOLUTION.x * RESOLUTION.y, float);
@@ -68,49 +114,127 @@ main :: () {
         format = .PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
     };
 
-    texture := rl.LoadTextureFromImage(image);
+    texture = rl.LoadTextureFromImage(image);
+}
 
-    success, model := read_obj_file("assets/model.obj");
-    if !success then return;
+close_window :: () {
+    rl.CloseWindow();
+}
 
-    for * model.meshes[0].vertices  it.color = { xx (random_get_zero_to_one() * 255), xx (random_get_zero_to_one() * 255), xx (random_get_zero_to_one() * 255), 255 };
+begin_drawing :: () {
+    rl.BeginDrawing();
+    rl.ClearBackground(rl.BLACK);
 
-    t := 0.0;
-    rotating_transform: Transform;
-    rotating_transform.position = { 0.5, 0.2, 0.3 };
+    for * z_buffer it.* = FLOAT32_MAX;
+    for * pixels it.* = rl.BLACK;
+}
 
-    while !rl.WindowShouldClose() {
-        rl.BeginDrawing();
-        defer rl.EndDrawing();
+end_drawing :: () {
+    tiles_across := RESOLUTION.x / TILE_SIZE;
+    tiles_along  := RESOLUTION.y / TILE_SIZE;
+    total_tiles  := tiles_across * tiles_along;
 
-        rl.ClearBackground(rl.BLACK);
+    for draw_calls {
+        using it;
+        draw_call_index := it_index;
+        mesh := model.meshes[0];
+        i := 0;
 
-        for * z_buffer it.* = FLOAT32_MAX;
-        for * pixels it.* = rl.BLACK;
+        // Pre-calculate MVP here so it's not done per-triangle
+        projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
+        view := make_look_at_matrix(freecam_transform.position, freecam_transform.position + get_forward(freecam_transform), V3_UP, x_is_forward=false);
+        mvp := projection * view * transform;
 
-        mouse := rl.GetMousePosition();
+        while i + 2 < mesh.indices.count {
+            // ... (Your vertex transformation and culling logic here) ...
+            // We assume p0, p1, p2 are now in screen space
+            v0 := mesh.vertices[mesh.indices[i + 0]];
+            v1 := mesh.vertices[mesh.indices[i + 1]];
+            v2 := mesh.vertices[mesh.indices[i + 2]];
 
-        t += rl.GetFrameTime();
-        // rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+            p0 := V4_ONE; p0.xyz = v0.position; p0 = mvp * p0; p0 = perspective_divide(p0); p0 = screen_to_viewport(p0);
+            p1 := V4_ONE; p1.xyz = v1.position; p1 = mvp * p1; p1 = perspective_divide(p1); p1 = screen_to_viewport(p1);
+            p2 := V4_ONE; p2.xyz = v2.position; p2 = mvp * p2; p2 = perspective_divide(p2); p2 = screen_to_viewport(p2);
 
-        update_freecam(rl.GetFrameTime());
+            // 1. Get the screen-space bounding box of the triangle
+            min_x := min(p0.x, p1.x, p2.x);
+            max_x := max(p0.x, p1.x, p2.x);
+            min_y := min(p0.y, p1.y, p2.y);
+            max_y := max(p0.y, p1.y, p2.y);
 
-        time := current_time_monotonic();
-        // Update pixels
-        {
-            draw({
-                model = model,
-                transform = m4x4(rotating_transform),
-                cull_mode = .BACK,
-            });
+            // 2. Convert screen-space bounds to tile-space bounds
+            // We use floor and divide by TILE_SIZE to see which tile index we are in
+            tile_start_x := max(0, cast(int)(min_x / TILE_SIZE));
+            tile_end_x   := min(tiles_across - 1, cast(int)(max_x / TILE_SIZE));
+            tile_start_y := max(0, cast(int)(min_y / TILE_SIZE));
+            tile_end_y   := min(tiles_along - 1, cast(int)(max_y / TILE_SIZE));
+
+            // 3. Add this triangle to every tile it touches
+            for ty: tile_start_y..tile_end_y {
+                for tx: tile_start_x..tile_end_x {
+                    tile_index := tx + ty * tiles_across;
+
+                    // Add the work to the specific tile bin
+                    // Storing the triangle's starting index 'i' and which draw call it belongs to
+                    array_add(*tiles[tile_index], .{ triangle_start_i = i, draw_call_idx = draw_call_index });
+                }
+            }
+
+            i += 3;
         }
-        log("draw time: %", to_microseconds(current_time_monotonic() - time));
-
-        rl.UpdateTexture(texture, pixels.data);
-
-        rl.DrawTexture(texture, 0, 0, rl.WHITE);
-        rl.DrawText(temp_c_string(tprint("FPS: %", rl.GetFPS())), 25, 25, 30, rl.WHITE);
     }
+
+    for 0..total_tiles-1 {
+        tile_index := New(int,, temp);
+        tile_index.* = it;
+        add_work(*thread_group, tile_index, tprint("Work item %", it));
+    }
+
+    work_remaining := total_tiles;
+
+    while work_remaining > 0 {
+        results := get_completed_work(*thread_group);
+        work_remaining -= results.count;
+    }
+
+    rl.UpdateTexture(texture, pixels.data);
+    rl.DrawTexture(texture, 0, 0, rl.WHITE);
+    rl.DrawText(temp_c_string(tprint("FPS: %", rl.GetFPS())), 25, 25, 30, rl.WHITE);
+
+    rl.EndDrawing();
+    draw_calls.count = 0;
+    for * tiles it.count = 0;
+}
+
+init_thread_group_stuff :: () {
+    num_cpus := get_number_of_processors();
+
+    assert(num_cpus >= 1);
+    if num_cpus > 200  num_cpus = 200; // Clamp to a value that is reasonable as of 2025, in case we get weird data.
+
+    #if (OS == .WINDOWS) || (OS == .LINUX) {
+        // This routine reports hyperthreads, so, divide by two, because of Intel marketing.
+        num_cpus /= 2;
+    }
+
+    num_threads := max(num_cpus - 1, 2);
+
+    log("This machine reports % CPUs; starting % threads.\n", num_cpus, num_threads);
+
+    init(*thread_group, num_threads, thread_group_proc);
+
+    thread_group.name    = "Raster Thread Group";
+    thread_group.logging = false;
+
+    start(*thread_group);
+}
+
+thread_group_proc :: (group: *Thread_Group, thread: *Thread, work: *void) -> Thread_Continue_Status {
+    tile_index := cast(*int) work;
+
+    draw_tile(tile_index.*);
+
+    return .CONTINUE;
 }
 
 update_freecam :: (dt: float) {
@@ -150,22 +274,36 @@ update_freecam :: (dt: float) {
     }
 }
 
-draw :: (using draw_call: Draw_Call) {
-    i := 0;
+draw :: (draw_call: Draw_Call) {
+    array_add(*draw_calls, draw_call);
+}
 
-    projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
+draw_tile :: (tile_index: int) {
+    // Number of tiles across the screen
+    TILES_X := RESOLUTION.x / TILE_SIZE;
 
-    view := make_look_at_matrix(freecam_transform.position, freecam_transform.position + get_forward(freecam_transform), V3_UP, x_is_forward=false);
+    // Calculate tile coordinates (e.g., tile 5 might be x=1, y=2)
+    tile_x := tile_index % TILES_X;
+    tile_y := tile_index / TILES_X;
 
-    mvp := projection * view * transform;
+    // Screen space bounds for this specific tile
+    tile_min_x := tile_x * TILE_SIZE;
+    tile_min_y := tile_y * TILE_SIZE;
+    tile_max_x := tile_min_x + TILE_SIZE;
+    tile_max_y := tile_min_y + TILE_SIZE;
 
-    mesh := model.meshes[0];
-    while i + 2 < mesh.indices.count {
-        defer i += 3;
+    for tiles[tile_index] {
+        using draw_calls[it.draw_call_idx];
 
-        v0 := mesh.vertices[mesh.indices[i + 0]];
-        v1 := mesh.vertices[mesh.indices[i + 1]];
-        v2 := mesh.vertices[mesh.indices[i + 2]];
+        mesh := model.meshes[0];
+
+        projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
+        view := make_look_at_matrix(freecam_transform.position, freecam_transform.position + get_forward(freecam_transform), V3_UP, x_is_forward=false);
+        mvp := projection * view * transform;
+
+        v0 := mesh.vertices[mesh.indices[it.triangle_start_i + 0]];
+        v1 := mesh.vertices[mesh.indices[it.triangle_start_i + 1]];
+        v2 := mesh.vertices[mesh.indices[it.triangle_start_i + 2]];
 
         p0 := V4_ONE; p0.xyz = v0.position; p0 = mvp * p0; p0 = perspective_divide(p0); p0 = screen_to_viewport(p0);
         p1 := V4_ONE; p1.xyz = v1.position; p1 = mvp * p1; p1 = perspective_divide(p1); p1 = screen_to_viewport(p1);
@@ -195,7 +333,12 @@ draw :: (using draw_call: Draw_Call) {
         min_x := min(int.[ xx floor(p0.x), xx floor(p1.x), xx floor(p2.x) ]); min_x = max(0, min_x);
         max_x := max(int.[ xx floor(p0.x), xx floor(p1.x), xx floor(p2.x) ]); max_x = min(RESOLUTION.x, max_x) - 1;
         min_y := min(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); min_y = max(0, min_y);
-        max_y := max(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); max_y = min(RESOLUTION.y, max_y) - 1;
+        max_y := max(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); max_y = min(RESOLUTION.y) - 1;
+
+        render_min_x := max(min_x, tile_min_x);
+        render_max_x := min(max_x, tile_max_x - 1);
+        render_min_y := max(min_y, tile_min_y);
+        render_max_y := min(max_y, tile_max_y - 1);
 
         inv_det := 1.0 / det012;
 
@@ -207,18 +350,18 @@ draw :: (using draw_call: Draw_Call) {
         step_x12 := -dy12; step_y12 := dx12;
         step_x20 := -dy20; step_y20 := dx20;
 
-        p_start := v4f.{ min_x + 0.5, min_y + 0.5, 0, 0 };
+        p_start := v4f.{ render_min_x + 0.5, render_min_y + 0.5, 0, 0 };
         row_det_a := det2d(p1 - p0, p_start - p0);
         row_det_b := det2d(p2 - p1, p_start - p1);
         row_det_c := det2d(p0 - p2, p_start - p2);
 
-        for y: min_y..max_y - 1 {
+        for y: render_min_y..render_max_y {
             det_a := row_det_a;
             det_b := row_det_b;
             det_c := row_det_c;
 
-            for x: min_x..max_x - 1 {
-                if (cast(s32, det_a) | cast(s32, det_b) | cast(s32, det_c)) >= 0 {
+            for x: render_min_x..render_max_x {
+                if det_a > 0 && det_b > 0 && det_c > 0 {
                     l0 := det_b * inv_det;
                     l1 := det_c * inv_det;
                     l2 := det_a * inv_det;
@@ -260,9 +403,10 @@ screen_to_viewport :: (using vec: v4f) -> v4f {
 perspective_divide :: inline (using vec: v4f) -> v4f {
     result := vec;
 
-    result.x /= w;
-    result.y /= w;
-    result.z /= w;
+    inv_w := 1 / w;
+    result.x *= inv_w;
+    result.y *= inv_w;
+    result.z *= inv_w;
 
     return result;
 }
@@ -477,5 +621,9 @@ get_vertex_hash :: (using vertex: Vertex) -> u32 {
 #import "Basic";
 #import "File";
 #import "String";
+#import "Flat_Pool";
+#import "Thread";
+#import "System";
+
 #import "My_Math";
 rl :: #import "raylib";
