@@ -2,6 +2,7 @@
 
 #import "Basic";
 #import "Sloppy_Math";
+#import "Hash";
 
 Transform :: struct {
     position :  v3;
@@ -112,7 +113,37 @@ V3_LEFT     :: v3f.{ -1,  0,  0 };
 V4_ONE  :: v4f.{ 1, 1, 1, 1 };
 V4_ZERO :: v4f.{ 0, 0, 0, 0 };
 
-Color :: #type,distinct v4(u8);
+Color :: #type,distinct v4f;
+
+COLOR_WHITE     :: Color.{ 1, 1, 1, 1 };
+COLOR_BLACK     :: Color.{ 0, 0, 0, 1 };
+COLOR_RED       :: Color.{ 1, 0, 0, 1 };
+COLOR_GREEN     :: Color.{ 0, 1, 0, 1 };
+COLOR_BLUE      :: Color.{ 0, 0, 1, 1 };
+COLOR_ORANGE    :: Color.{ 1.0, 0.5, 0.0, 1.0 };
+COLOR_PURPLE    :: Color.{ 0.5, 0.0, 0.5, 1.0 };
+COLOR_PINK      :: Color.{ 1.0, 0.4, 0.7, 1.0 };
+COLOR_YELLOW    :: Color.{ 1.0, 1.0, 0.0, 1.0 };
+COLOR_CYAN      :: Color.{ 0.0, 1.0, 1.0, 1.0 };
+COLOR_MAGENTA   :: Color.{ 1.0, 0.0, 1.0, 1.0 };
+COLOR_BROWN     :: Color.{ 0.6, 0.3, 0.0, 1.0 };
+COLOR_LIME      :: Color.{ 0.7, 1.0, 0.0, 1.0 };
+COLOR_TEAL      :: Color.{ 0.0, 0.5, 0.5, 1.0 };
+COLOR_INDIGO    :: Color.{ 0.3, 0.0, 0.5, 1.0 };
+COLOR_MAROON    :: Color.{ 0.5, 0.0, 0.0, 1.0 };
+COLOR_GOLD      :: Color.{ 1.0, 0.84, 0.0, 1.0 };
+COLOR_SILVER    :: Color.{ 0.75, 0.75, 0.75, 1.0 };
+COLOR_SLATE     :: Color.{ 0.44, 0.5, 0.56, 1.0 };
+COLOR_CORAL     :: Color.{ 1.0, 0.5, 0.31, 1.0 };
+COLOR_TURQUOISE :: Color.{ 0.25, 0.88, 0.82, 1.0 };
+COLOR_MINT      :: Color.{ 0.6, 1.0, 0.6, 1.0 };
+COLOR_LAVENDER  :: Color.{ 0.9, 0.9, 0.98, 1.0 };
+COLOR_NAVY      :: Color.{ 0.0, 0.0, 0.5, 1.0 };
+COLOR_CHARCOAL  :: Color.{ 0.2, 0.2, 0.2, 1.0 };
+COLOR_IVORY     :: Color.{ 1.0, 1.0, 0.94, 1.0 };
+COLOR_SALMON    :: Color.{ 0.98, 0.5, 0.45, 1.0 };
+COLOR_PEACH     :: Color.{ 1.0, 0.85, 0.73, 1.0 };
+COLOR_SKY_BLUE  :: Color.{ 0.53, 0.81, 0.98, 1.0 };
 
 //
 // @note: Apparently distinct types don't get the operator overloads??

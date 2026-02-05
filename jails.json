@@ -1,0 +1,13 @@
+{
+    "local_modules": [
+        "modules"
+    ],
+    "roots": [
+        "build.jai",
+        "src/main.jai"
+    ],
+    "build_root": "build.jai",
+    "intermediate_path": "tmp/",
+    "auto_insert_parentheses": false
+}
+

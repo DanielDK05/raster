@@ -42,6 +42,14 @@ build :: () {
     message_loop();
 
     compiler_end_intercept(w);
+
+    // Copy dll files to build dir
+    {
+        paths := file_list("dlls");
+        for paths {
+            copy_file(it, tprint("%/%", OUTPUT_PATH, path_filename(it)));
+        }
+    }
 }
 
 message_loop :: () { }
