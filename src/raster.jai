@@ -28,32 +28,53 @@ draw :: (draw_call: Draw_Call) {
 open_window :: () {
     init_thread_group_stuff();
 
-    rl.InitWindow(xx RESOLUTION.x, xx RESOLUTION.y, TITLE);
+    window = create_window(RESOLUTION.x, RESOLUTION.y, TITLE);
+
+    Simp.set_render_target(window, .LEFT_HANDED);
 
     pixels   = NewArray(RESOLUTION.x * RESOLUTION.y, Color);
     z_buffer = NewArray(RESOLUTION.x * RESOLUTION.y, float);
 
-    image := rl.Image.{
-        data = pixels.data,
-        width = xx RESOLUTION.x,
-        height = xx RESOLUTION.y,
-        mipmaps = 1,
-        format = .PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
-    };
+    {
+        using bitmap;
+        width        = xx RESOLUTION.x;
+        height       = xx RESOLUTION.y;
+        mipmap_count = 1;
 
-    texture = rl.LoadTextureFromImage(image);
+        bpp := Simp.get_image_bytes_per_texel(.RGBA32F);
+        size := width * height * bpp;
+
+        data         = { data = xx pixels.data, count = pixels.count * 16 };
+        stride       = xx (width*bpp);
+
+        format       = .RGBA32F;
+        flags       |= .FREE_DATA_ON_DEINIT;
+
+    }
 }
 
 close_window :: () {
-    rl.CloseWindow();
+    // Window_Creation module doesn't have destroy window proc ????
 }
 
+window_should_close :: () -> bool {
+    current_time = seconds_since_init();
+    dt = cast(float)(current_time - last_time);
+    Clamp(*dt, 0, 0.1);
+    last_time = current_time;
+
+    quit := update_input();
+
+    return quit;
+}
+
+get_delta_time :: () -> float { return dt; }
+
 begin_drawing :: () {
-    rl.BeginDrawing();
-    rl.ClearBackground(rl.BLACK);
+    Simp.clear_render_target(.15, .08, .08, 1);
 
     for * z_buffer it.* = FLOAT32_MAX;
-    for * pixels it.* = rl.BLACK;
+    for * pixels it.* = { 0, 0, 0, 1 };
 }
 
 end_drawing :: () {
@@ -124,18 +145,29 @@ end_drawing :: () {
         work_remaining -= results.count;
     }
 
-    rl.UpdateTexture(texture, pixels.data);
-    rl.DrawTexture(texture, 0, 0, rl.WHITE);
-    rl.DrawText(temp_c_string(tprint("FPS: %", rl.GetFPS())), 25, 25, 30, rl.WHITE);
+    texture: Simp.Texture;
+    Simp.texture_load_from_bitmap(*texture, *bitmap);
+    Simp.set_shader_for_images(*texture);
+    Simp.immediate_quad(0, 0, xx window_width, xx window_height, { 1, 1, 1, 1 });
 
-    rl.EndDrawing();
+    Simp.immediate_flush();
+    Simp.swap_buffers(window);
+
     draw_calls.count = 0;
     for * tiles it.count = 0;
 }
 
 #scope_module
 
-texture  : rl.Texture2D;
+window : Window_Type;
+window_width  : s64;
+window_height : s64;
+
+current_time : float64;
+last_time    : float64;
+dt           : float;
+
+bitmap   : Simp.Bitmap;
 pixels   : [] Color;
 z_buffer : [] float;
 
@@ -320,6 +352,7 @@ thread_group_proc :: (group: *Thread_Group, thread: *Thread, work: *void) -> Thr
 }
 
 #load "model.jai";
+#load "input.jai";
 
 #import "Hash";
 #import "Random";
@@ -332,4 +365,7 @@ thread_group_proc :: (group: *Thread_Group, thread: *Thread, work: *void) -> Thr
 #import "System";
 
 #import "My_Math";
-rl :: #import "raylib";
+
+Simp :: #import "Simp";
+Input :: #import "Input";
+#import "Window_Creation";

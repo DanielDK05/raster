@@ -113,7 +113,7 @@ V3_LEFT     :: v3f.{ -1,  0,  0 };
 V4_ONE  :: v4f.{ 1, 1, 1, 1 };
 V4_ZERO :: v4f.{ 0, 0, 0, 0 };
 
-Color :: #type,distinct v4(u8);
+Color :: #type,distinct v4(float);
 
 operator == :: (a: Color, b: Color) -> bool { return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w; }
 

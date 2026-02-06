@@ -16,22 +16,27 @@ main :: () {
     success, model := read_obj_file("assets/model.obj");
     if !success then return;
 
-    for * model.meshes[0].vertices  it.color = { xx (random_get_zero_to_one() * 255), xx (random_get_zero_to_one() * 255), xx (random_get_zero_to_one() * 255), 255 };
+    for * model.meshes[0].vertices  it.color = { xx (random_get_zero_to_one()), xx (random_get_zero_to_one()), xx (random_get_zero_to_one()), 1 };
 
     t := 0.0;
     rotating_transform: Transform;
     rotating_transform.position = { 0.5, 0.2, 0.3 };
 
-    while !rl.WindowShouldClose() {
-        defer reset_temporary_storage();
-
+    defer reset_temporary_storage();
+ 
+    while !window_should_close() {
         begin_drawing();
         defer end_drawing();
 
-        t += rl.GetFrameTime();
-        // rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+        if key_just_released(.ESCAPE) then break;
 
-        update_freecam(rl.GetFrameTime());
+        dt := get_delta_time();
+        log("FPS: %", floor(1 / dt));
+
+        t += dt;
+        rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+
+        update_freecam(dt);
         set_camera_pose(freecam_transform);
 
         for x: 0..9
@@ -51,11 +56,10 @@ main :: () {
 
 update_freecam :: (dt: float) {
     // Rotation
-    if rl.IsMouseButtonDown(.MOUSE_BUTTON_RIGHT) {
-        delta := rl.GetMouseDelta();
-
-        freecam_pitch += delta.y * FREECAM_LOOK_SENSITIVITY;
-        freecam_yaw   -= delta.x * FREECAM_LOOK_SENSITIVITY;
+    if key_pressed(.MOUSE_RIGHT) {
+        mouse_delta := get_mouse_delta_f();
+        freecam_pitch += mouse_delta.y * FREECAM_LOOK_SENSITIVITY;
+        freecam_yaw   -= mouse_delta.x * FREECAM_LOOK_SENSITIVITY;
 
         freecam_pitch = clamp(freecam_pitch, -PI / 2 + 0.001, PI / 2 - 0.001);
 
@@ -73,12 +77,12 @@ update_freecam :: (dt: float) {
 
         left := v3f.{ forward.z, 0, -forward.x };
 
-        if rl.IsKeyDown(.KEY_W) then velocity += forward;
-        if rl.IsKeyDown(.KEY_A) then velocity += left;
-        if rl.IsKeyDown(.KEY_S) then velocity -= forward;
-        if rl.IsKeyDown(.KEY_D) then velocity -= left;
-        if rl.IsKeyDown(.KEY_E) then velocity += .{  0,  1,  0 };
-        if rl.IsKeyDown(.KEY_Q) then velocity += .{  0, -1,  0 };
+        if key_pressed(.W) then velocity += forward;
+        if key_pressed(.A) then velocity += left;
+        if key_pressed(.S) then velocity -= forward;
+        if key_pressed(.D) then velocity -= left;
+        if key_pressed(.E) then velocity += .{  0,  1,  0 };
+        if key_pressed(.Q) then velocity += .{  0, -1,  0 };
 
         normalize(*velocity);
 
@@ -92,4 +96,4 @@ update_freecam :: (dt: float) {
 #import "My_Math";
 #import "Random";
 
-rl :: #import "raylib";
+Input :: #import "Input";
