@@ -1,6 +1,21 @@
 FREECAM_LOOK_SENSITIVITY :: 0.005;
 FREECAM_SPEED :: 4.0;
 
+MAX_TILES :: 1024;
+
+Tile_Type :: enum {
+    GRASS;
+    WATER;
+    BUILDING;
+    COUNT;
+}
+
+Tile :: struct {
+    active: bool;
+    type: Tile_Type;
+    grid_position: v3i;
+}
+
 freecam_pitch     : float;
 freecam_yaw       : float;
 freecam_transform : Transform = {
@@ -9,44 +24,65 @@ freecam_transform : Transform = {
     position.z = -2,
 };
 
+tile_models: [#run cast(int) Tile_Type.COUNT] Model;
+tiles: [MAX_TILES] Tile;
+
 main :: () {
     open_window();
     defer close_window();
 
-    success, model := read_obj_file("assets/medieval_megapack/Assets/obj/buildings/neutral/wall_straight.obj");
-    if !success then return;
+    for * tile_models {
+        path := get_tile_path(xx it_index);
+        success:, it.* = read_obj_file(path);
+        if !success {
+            log_error("Failed to load model for tile of type %, path: `%`", cast(Tile_Type) it_index, path);
+            exit(1);
+        }
+    }
 
-    t := 0.0;
-    rotating_transform: Transform;
-    rotating_transform.position = { 0.5, 0.2, 0.3 };
+    // Building the environment
+    {
+        // Grass
+        for x: -5..4
+        for z: -5..4 {
+            add_tile(.GRASS, x, 0, z);
+        }
 
-    defer reset_temporary_storage();
+        // Water
+        for x: -8..7
+        for z: -8..7 {
+            if x >= -5 && x <= 4 && z >= -5 && z <= 4 continue;
+
+            add_tile(.WATER, x, 0, z);
+        }
+
+        add_tile(.BUILDING, 0, 0, 0);
+    }
  
     while !window_should_close() {
+        dt := get_delta_time();
+
+        defer reset_temporary_storage();
+
         begin_drawing();
         defer end_drawing();
 
         if key_just_released(.ESCAPE) then break;
 
-        dt := get_delta_time();
-        log("FPS: %", floor(1 / dt));
-
-        t += dt;
-        // rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
-
         update_freecam(dt);
         set_camera_pose(freecam_transform);
 
-        for x: 0..0
-        for z: 0..0 {
-            transform := rotating_transform;
-            transform.position.x = xx (x * 2);
-            transform.position.z = xx (z * 2);
+        for tiles {
+            if !it.active break;
+
+            model := tile_models[xx it.type];
+
+            transform: Transform;
+            transform.position = hex_grid_pos_to_world_pos(it.grid_position);
 
             draw({
                 model = model,
                 transform = m4x4(transform),
-                cull_mode = .BACK,
             });
         }
     }
@@ -86,6 +122,38 @@ update_freecam :: (dt: float) {
 
         freecam_transform.position += velocity * FREECAM_SPEED * dt;
     }
+}
+
+add_tile :: (type: Tile_Type, x: int, y: int, z: int) { add_tile(type, {x,y,z}); }
+add_tile :: (type: Tile_Type, hex_pos: v3s) {
+    for * tiles {
+        if it.active continue;
+
+        it.active = true;
+        it.grid_position = hex_pos;
+        it.type = type;
+
+        return;
+    }
+
+    log_error("Trying to add more tiles than the max amount of %!", MAX_TILES);
+}
+
+get_tile_path :: (type: Tile_Type) -> string {
+    if type == {
+        case .GRASS; return "assets/medieval_megapack/Assets/obj/tiles/base/hex_grass.obj";
+        case .WATER; return "assets/medieval_megapack/Assets/obj/tiles/base/hex_water.obj";
+        case .BUILDING; return "assets/medieval_megapack/Assets/obj/buildings/blue/building_castle_blue.obj";
+    }
+
+    return "";
+}
+
+hex_grid_pos_to_world_pos :: (hex: v3s) -> v3f {
+    x := cast(float) (hex.x * 2 + (ifx hex.z % 2 then 1 else 0));
+    z := cast(float) (hex.z * sqrt(3));
+    
+    return { x, xx hex.y, z };
 }
 
 #import,file "raster.jai";
