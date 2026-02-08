@@ -2,6 +2,7 @@
 
 #import "Basic";
 #import "Sloppy_Math";
+#import "Hash";
 
 Transform :: struct {
     position :  v3;
@@ -112,7 +113,9 @@ V3_LEFT     :: v3f.{ -1,  0,  0 };
 V4_ONE  :: v4f.{ 1, 1, 1, 1 };
 V4_ZERO :: v4f.{ 0, 0, 0, 0 };
 
-Color :: #type,distinct v4(u8);
+Color :: #type,distinct v4(float);
+
+operator == :: (a: Color, b: Color) -> bool { return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w; }
 
 //
 // @note: Apparently distinct types don't get the operator overloads??
@@ -140,6 +143,7 @@ quaternion_from_euler :: (using euler: v3f) -> Quaternion {
            quaternion_from_axis_angle(.{ 1, 0, 0 }, pitch);
 }
 
+get_forward :: (t: Transform) -> v3f { return get_forward(t.rotation); }
 get_forward :: (q: Quaternion) -> v3f {
     normalized := q;
     normalize_or_identity(*normalized);
@@ -374,6 +378,7 @@ normalize :: (v: v3f, epsilon := 0.0, fallback := v3f.{}) -> v3f {
 get_hash :: (vec: v2) -> u32 { return get_hash(vec.T.[vec.x, vec.y]); }
 get_hash :: (vec: v3) -> u32 { return get_hash(vec.T.[vec.x, vec.y, vec.z]); }
 get_hash :: (vec: v4) -> u32 { return get_hash(vec.T.[vec.x, vec.y, vec.z, vec.w]); }
+get_hash :: (vec: Color) -> u32 { return get_hash(vec.T.[vec.x, vec.y, vec.z, vec.w]); }
 
 _v2f :: (a: float) -> v2f { return .{ a, a }; }
 _v3f :: (a: float) -> v3f { return .{ a, a, a }; }
