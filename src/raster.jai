@@ -231,15 +231,15 @@ draw_tile :: (tile_index: int) {
             continue;
         }
 
-        min_x := min(int.[ xx floor(p0.x), xx floor(p1.x), xx floor(p2.x) ]); min_x = max(0, min_x);
-        max_x := max(int.[ xx floor(p0.x), xx floor(p1.x), xx floor(p2.x) ]); max_x = min(RESOLUTION.x, max_x) - 1;
-        min_y := min(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); min_y = max(0, min_y);
-        max_y := max(int.[ xx floor(p0.y), xx floor(p1.y), xx floor(p2.y) ]); max_y = min(RESOLUTION.y) - 1;
+        min_x := min(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)); min_x = max(0, min_x);
+        max_x := max(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)); max_x = min(RESOLUTION.x, max_x);
+        min_y := min(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)); min_y = max(0, min_y);
+        max_y := max(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)); max_y = min(RESOLUTION.y, max_y);
 
         render_min_x := max(min_x, tile_min_x);
-        render_max_x := min(max_x, tile_max_x - 1);
+        render_max_x := min(max_x, tile_max_x-1);
         render_min_y := max(min_y, tile_min_y);
-        render_max_y := min(max_y, tile_max_y - 1);
+        render_max_y := min(max_y, tile_max_y-1);
 
         inv_det := 1.0 / det012;
 
@@ -255,14 +255,6 @@ draw_tile :: (tile_index: int) {
         row_det_a := det2d(p1 - p0, p_start - p0);
         row_det_b := det2d(p2 - p1, p_start - p1);
         row_det_c := det2d(p0 - p2, p_start - p2);
-
-        is_top_left01 := (dy01 < 0) || (dy01 == 0 && dx01 > 0);
-        is_top_left12 := (dy12 < 0) || (dy12 == 0 && dx12 > 0);
-        is_top_left20 := (dy20 < 0) || (dy20 == 0 && dx20 > 0);
-
-        bias01 := ifx is_top_left01 then 0. else -1;
-        bias12 := ifx is_top_left12 then 0. else -1;
-        bias20 := ifx is_top_left20 then 0. else -1;
 
         for y: render_min_y..render_max_y {
             det_a := row_det_a;
