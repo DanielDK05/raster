@@ -49,7 +49,6 @@ open_window :: () {
 
         format       = .RGBA32F;
         flags       |= .FREE_DATA_ON_DEINIT;
-
     }
 }
 
@@ -84,18 +83,16 @@ end_drawing :: () {
 
     for draw_calls {
         using it;
+
         draw_call_index := it_index;
         mesh := model.meshes[0];
         i := 0;
 
-        // Pre-calculate MVP here so it's not done per-triangle
         projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
         view := make_look_at_matrix(camera_transform.position, camera_transform.position + get_forward(camera_transform), V3_UP, x_is_forward=false);
         mvp := projection * view * transform;
 
         while i + 2 < mesh.indices.count {
-            // ... (Your vertex transformation and culling logic here) ...
-            // We assume p0, p1, p2 are now in screen space
             v0 := mesh.vertices[mesh.indices[i + 0]];
             v1 := mesh.vertices[mesh.indices[i + 1]];
             v2 := mesh.vertices[mesh.indices[i + 2]];
@@ -104,26 +101,20 @@ end_drawing :: () {
             p1 := V4_ONE; p1.xyz = v1.position; p1 = mvp * p1; p1 = perspective_divide(p1); p1 = screen_to_viewport(p1);
             p2 := V4_ONE; p2.xyz = v2.position; p2 = mvp * p2; p2 = perspective_divide(p2); p2 = screen_to_viewport(p2);
 
-            // 1. Get the screen-space bounding box of the triangle
             min_x := min(p0.x, p1.x, p2.x);
             max_x := max(p0.x, p1.x, p2.x);
             min_y := min(p0.y, p1.y, p2.y);
             max_y := max(p0.y, p1.y, p2.y);
 
-            // 2. Convert screen-space bounds to tile-space bounds
-            // We use floor and divide by TILE_SIZE to see which tile index we are in
             tile_start_x := max(0, cast(int)(min_x / TILE_SIZE));
             tile_end_x   := min(tiles_across - 1, cast(int)(max_x / TILE_SIZE));
             tile_start_y := max(0, cast(int)(min_y / TILE_SIZE));
             tile_end_y   := min(tiles_along - 1, cast(int)(max_y / TILE_SIZE));
 
-            // 3. Add this triangle to every tile it touches
             for ty: tile_start_y..tile_end_y {
                 for tx: tile_start_x..tile_end_x {
                     tile_index := tx + ty * tiles_across;
 
-                    // Add the work to the specific tile bin
-                    // Storing the triangle's starting index 'i' and which draw call it belongs to
                     array_add(*tiles[tile_index], .{ triangle_start_i = i, draw_call_idx = draw_call_index });
                 }
             }
@@ -202,6 +193,11 @@ draw_tile :: (tile_index: int) {
 
         mesh := model.meshes[0];
 
+        texture := model.textures[0];
+        assert(texture.valid);
+        texture_pixels := cast(*u8) texture.data;
+        texture_stride := stbi_format_size(texture.format);
+
         projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
         view := make_look_at_matrix(camera_transform.position, camera_transform.position + get_forward(camera_transform), V3_UP, x_is_forward=false);
         mvp := projection * view * transform;
@@ -260,27 +256,45 @@ draw_tile :: (tile_index: int) {
         row_det_b := det2d(p2 - p1, p_start - p1);
         row_det_c := det2d(p0 - p2, p_start - p2);
 
+        is_top_left01 := (dy01 < 0) || (dy01 == 0 && dx01 > 0);
+        is_top_left12 := (dy12 < 0) || (dy12 == 0 && dx12 > 0);
+        is_top_left20 := (dy20 < 0) || (dy20 == 0 && dx20 > 0);
+
+        bias01 := ifx is_top_left01 then 0. else -1;
+        bias12 := ifx is_top_left12 then 0. else -1;
+        bias20 := ifx is_top_left20 then 0. else -1;
+
         for y: render_min_y..render_max_y {
             det_a := row_det_a;
             det_b := row_det_b;
             det_c := row_det_c;
 
             for x: render_min_x..render_max_x {
-                if det_a > 0 && det_b > 0 && det_c > 0 {
+                if det_a >= 0 && det_b >= 0 && det_c >= 0 {
                     l0 := det_b * inv_det;
                     l1 := det_c * inv_det;
                     l2 := det_a * inv_det;
-
-                    c0 := Color.{ xx (l0 * v0.color.r), xx (l0 * v0.color.g), xx (l0 * v0.color.b), v0.color.a };
-                    c1 := Color.{ xx (l1 * v1.color.r), xx (l1 * v1.color.g), xx (l1 * v1.color.b), v1.color.a };
-                    c2 := Color.{ xx (l2 * v2.color.r), xx (l2 * v2.color.g), xx (l2 * v2.color.b), v2.color.a };
 
                     depth := (l0 * p0.w) + (l1 * p1.w) + (l2 * p2.w);
 
                     index := x + y * RESOLUTION.x;
                     if depth < z_buffer[index] {
+                        pixel_uv := v0.uv * l0 + v1.uv * l1 + v2.uv * l2;
+
+                        tex_x := cast(s32)(pixel_uv.x * cast(float)texture.width)  % texture.width;
+                        tex_y := cast(s32)(pixel_uv.y * cast(float)texture.height) % texture.height;
+
+                        if tex_x < 0 then tex_x += texture.width;
+                        if tex_y < 0 then tex_y += texture.height;
+
+                        pixel_offset := (tex_y * texture.width + tex_x) * texture_stride;
+                        r := texture_pixels[pixel_offset + 0];
+                        g := texture_pixels[pixel_offset + 1];
+                        b := texture_pixels[pixel_offset + 2];
+                        a := texture_pixels[pixel_offset + 3];
+
                         z_buffer[index] = depth;
-                        pixels[index] = c0 + c1 + c2;
+                        pixels[index] = Color.{r/255.0, g/255.0, b/255.0, a/255.0};
                     }
                 }
 
@@ -353,6 +367,7 @@ thread_group_proc :: (group: *Thread_Group, thread: *Thread, work: *void) -> Thr
 
 #load "model.jai";
 #load "input.jai";
+#load "texture.jai";
 
 #import "Hash";
 #import "Random";
@@ -369,3 +384,4 @@ thread_group_proc :: (group: *Thread_Group, thread: *Thread, work: *void) -> Thr
 Simp :: #import "Simp";
 Input :: #import "Input";
 #import "Window_Creation";
+#import "stb_image";

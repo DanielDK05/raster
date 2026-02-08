@@ -2,7 +2,7 @@ Model_ID :: #type,distinct int;
 Model :: struct {
     id       : Model_ID;
     meshes   : [] Mesh;
-    // textures : [] Texture;
+    textures : [] Texture;
 }
 
 Mesh_ID :: #type,distinct u32;
@@ -16,7 +16,6 @@ Vertex :: struct {
     position : v3f;
     normal   : v3f;
     uv       : v2f;
-    color    : Color;
 }
 
 free :: (using mesh: Mesh) {
@@ -24,7 +23,7 @@ free :: (using mesh: Mesh) {
     array_free(indices);
 }
 
-read_obj_file :: (path: string, flip_uv_vertical := false, yeet_duplicates := false) -> bool, Model {
+read_obj_file :: (path: string, flip_uv_vertical := true, yeet_duplicates := false) -> bool, Model {
     #if OS == .ANDROID {
         Android_File :: #import "Android/File";
         file, read_success := Android_File.read_entire_file(context.android_app.activity.assetManager, path);
@@ -42,7 +41,7 @@ read_obj_file :: (path: string, flip_uv_vertical := false, yeet_duplicates := fa
     temp_normals  : [..]v3;
     vert_indices, uv_indices, normal_indices: [..]u32;
 
-    // texture: Texture;
+    texture: Texture;
 
     lines := split(file, "\n");
 
@@ -52,14 +51,14 @@ read_obj_file :: (path: string, flip_uv_vertical := false, yeet_duplicates := fa
         }
 
         if begins_with(line, "usemtl") {
-            // parts := split(line, " ");
-            // assert(parts.count == 2);
-            // // @Todo: support more than png lol
-            // filename := parts[1];
-            // if filename[filename.count-1] == "\r" then filename.count = filename.count - 1;
-            // texture_path := join(path_strip_filename(path), filename, ".png"); 
-            //
-            // success:, texture = load_texture(texture_path);
+            parts := split(line, " ");
+            assert(parts.count == 2);
+            // @Todo: support more than png lol
+            filename := parts[1];
+            if filename[filename.count-1] == "\r" then filename.count = filename.count - 1;
+            texture_path := join(path_strip_filename(path), filename, ".png"); 
+
+            success:, texture = load_texture(texture_path);
         }
 
         if line[0] == {
@@ -194,13 +193,13 @@ read_obj_file :: (path: string, flip_uv_vertical := false, yeet_duplicates := fa
     meshes := NewArray(1, Mesh);
     meshes[0] = mesh;
 
-    // textures := NewArray(1, Texture);
-    // textures[0] = texture;
+    textures := NewArray(1, Texture);
+    textures[0] = texture;
 
     return true, .{
         id       = 0,
         meshes   = meshes,
-        // textures = textures,
+        textures = textures,
     };
 }
 

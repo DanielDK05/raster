@@ -13,10 +13,8 @@ main :: () {
     open_window();
     defer close_window();
 
-    success, model := read_obj_file("assets/model.obj");
+    success, model := read_obj_file("assets/medieval_megapack/Assets/obj/buildings/neutral/wall_straight.obj");
     if !success then return;
-
-    for * model.meshes[0].vertices  it.color = { xx (random_get_zero_to_one()), xx (random_get_zero_to_one()), xx (random_get_zero_to_one()), 1 };
 
     t := 0.0;
     rotating_transform: Transform;
@@ -34,13 +32,13 @@ main :: () {
         log("FPS: %", floor(1 / dt));
 
         t += dt;
-        rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
+        // rotating_transform.rotation = quaternion_from_axis_angle(normalize(.{1, 1, 0}), t);
 
         update_freecam(dt);
         set_camera_pose(freecam_transform);
 
-        for x: 0..9
-        for z: 0..9 {
+        for x: 0..0
+        for z: 0..0 {
             transform := rotating_transform;
             transform.position.x = xx (x * 2);
             transform.position.z = xx (z * 2);
