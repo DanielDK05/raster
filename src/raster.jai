@@ -1,3 +1,15 @@
+//
+// # @todo list for improvements:
+// - Adjustable resolution
+// - Transparency
+// - Wireframes
+// - Frustum culling
+// - Proper near-plane clipping
+// - Some sort of custom shader system
+// - SIMD
+// - Anti-aliasing
+//
+
 // @todo: make dynamic
 RESOLUTION :: v2i.{1280, 720};
 TILE_SIZE :: 16;
@@ -361,10 +373,10 @@ thread_group_proc :: (group: *Thread_Group, thread: *Thread, work: *void) -> Thr
 #load "input.jai";
 #load "texture.jai";
 
+#import "Basic";
 #import "Hash";
 #import "Random";
 #import "Hash_Table";
-#import "Basic";
 #import "File";
 #import "String";
 #import "Flat_Pool";

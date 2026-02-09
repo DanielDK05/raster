@@ -61,6 +61,7 @@ main :: () {
  
     while !window_should_close() {
         dt := get_delta_time();
+        log("FPS: %", 1/dt);
 
         defer reset_temporary_storage();
 
