@@ -20,7 +20,7 @@ build :: () {
     w := compiler_create_workspace();
 
     options := get_build_options();
-    set_optimization(*options, ifx release then .OPTIMIZED else .DEBUG);
+    set_optimization(*options, ifx release then .VERY_OPTIMIZED else .DEBUG);
 
     {
         using options;

@@ -11,7 +11,7 @@
 //
 
 // @todo: make dynamic
-RESOLUTION :: v2i.{1280, 720};
+RESOLUTION :: v2i.{1920, 1080};
 TILE_SIZE :: 16;
 TOTAL_TILES :: #run (RESOLUTION.x / TILE_SIZE) * (RESOLUTION.y / TILE_SIZE);
 TITLE :: "raster";
@@ -150,6 +150,8 @@ end_drawing :: () {
 
     texture: Simp.Texture;
     Simp.texture_load_from_bitmap(*texture, *bitmap);
+    defer Simp.texture_destroy(*texture);
+
     Simp.set_shader_for_images(*texture);
     Simp.immediate_quad(0, 0, xx window_width, xx window_height, { 1, 1, 1, 1 });
 
@@ -200,6 +202,9 @@ draw_tile :: (tile_index: int) {
     tile_max_x := tile_min_x + TILE_SIZE;
     tile_max_y := tile_min_y + TILE_SIZE;
 
+    projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
+    view := make_look_at_matrix(camera_transform.position, camera_transform.position + get_forward(camera_transform), V3_UP, x_is_forward=false);
+
     for tiles[tile_index] {
         using draw_calls[it.draw_call_idx];
 
@@ -210,17 +215,15 @@ draw_tile :: (tile_index: int) {
         texture_pixels := cast(*u8) texture.data;
         texture_stride := stbi_format_size(texture.format);
 
-        projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
-        view := make_look_at_matrix(camera_transform.position, camera_transform.position + get_forward(camera_transform), V3_UP, x_is_forward=false);
         mvp := projection * view * transform;
 
         v0 := mesh.vertices[mesh.indices[it.triangle_start_i + 0]];
         v1 := mesh.vertices[mesh.indices[it.triangle_start_i + 1]];
         v2 := mesh.vertices[mesh.indices[it.triangle_start_i + 2]];
 
-        p0 := V4_ONE; p0.xyz = v0.position; p0 = mvp * p0; p0 = perspective_divide(p0); p0 = screen_to_viewport(p0);
-        p1 := V4_ONE; p1.xyz = v1.position; p1 = mvp * p1; p1 = perspective_divide(p1); p1 = screen_to_viewport(p1);
-        p2 := V4_ONE; p2.xyz = v2.position; p2 = mvp * p2; p2 = perspective_divide(p2); p2 = screen_to_viewport(p2);
+        p0 := screen_to_viewport(perspective_divide(mvp * v4f.{v0.position.x,v0.position.y,v0.position.z,1}));
+        p1 := screen_to_viewport(perspective_divide(mvp * v4f.{v1.position.x,v1.position.y,v1.position.z,1}));
+        p2 := screen_to_viewport(perspective_divide(mvp * v4f.{v2.position.x,v2.position.y,v2.position.z,1}));
 
         det012 := det2d(p1 - p0, p2 - p0);
         counter_clockwise := det012 < 0;
@@ -243,10 +246,10 @@ draw_tile :: (tile_index: int) {
             continue;
         }
 
-        min_x := min(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)); min_x = max(0, min_x);
-        max_x := max(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)); max_x = min(RESOLUTION.x, max_x);
-        min_y := min(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)); min_y = max(0, min_y);
-        max_y := max(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)); max_y = min(RESOLUTION.y, max_y);
+        min_x := max(0, min(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)));
+        max_x := min(RESOLUTION.x, max(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)));
+        min_y := max(0, min(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)));
+        max_y := min(RESOLUTION.y, max(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)));;
 
         render_min_x := max(min_x, tile_min_x);
         render_max_x := min(max_x, tile_max_x-1);
@@ -263,28 +266,33 @@ draw_tile :: (tile_index: int) {
         step_x12 := -dy12; step_y12 := dx12;
         step_x20 := -dy20; step_y20 := dx20;
 
+        depth_step_x := (step_x12 * p0.w + step_x20 * p1.w + step_x01 * p2.w) * inv_det;
+        depth_step_y := (step_y12 * p0.w + step_y20 * p1.w + step_y01 * p2.w) * inv_det;
+        
+        uv_step_x := (v0.uv * step_x12 + v1.uv * step_x20 + v2.uv * step_x01) * inv_det;
+        uv_step_y := (v0.uv * step_y12 + v1.uv * step_y20 + v2.uv * step_y01) * inv_det;
+
         p_start := v4f.{ render_min_x + 0.5, render_min_y + 0.5, 0, 0 };
+        
         row_det_a := det2d(p1 - p0, p_start - p0);
         row_det_b := det2d(p2 - p1, p_start - p1);
         row_det_c := det2d(p0 - p2, p_start - p2);
+
+        row_depth := (row_det_b * p0.w + row_det_c * p1.w + row_det_a * p2.w) * inv_det;
+        row_uv    := (v0.uv * row_det_b + v1.uv * row_det_c + v2.uv * row_det_a) * inv_det;
 
         for y: render_min_y..render_max_y {
             det_a := row_det_a;
             det_b := row_det_b;
             det_c := row_det_c;
+            pixel_depth := row_depth;
+            pixel_uv    := row_uv;
 
             for x: render_min_x..render_max_x {
-                if det_a >= 0 && det_b >= 0 && det_c >= 0 {
-                    l0 := det_b * inv_det;
-                    l1 := det_c * inv_det;
-                    l2 := det_a * inv_det;
-
-                    depth := (l0 * p0.w) + (l1 * p1.w) + (l2 * p2.w);
-
+                if (cast(s32,det_a) | cast(s32,det_b) | cast(s32,det_c)) >= 0 {
                     index := x + y * RESOLUTION.x;
-                    if depth < z_buffer[index] {
-                        pixel_uv := v0.uv * l0 + v1.uv * l1 + v2.uv * l2;
-
+                    
+                    if pixel_depth < z_buffer[index] {
                         tex_x := cast(s32)(pixel_uv.x * cast(float)texture.width)  % texture.width;
                         tex_y := cast(s32)(pixel_uv.y * cast(float)texture.height) % texture.height;
 
@@ -292,29 +300,34 @@ draw_tile :: (tile_index: int) {
                         if tex_y < 0 then tex_y += texture.height;
 
                         pixel_offset := (tex_y * texture.width + tex_x) * texture_stride;
-                        r := texture_pixels[pixel_offset + 0];
-                        g := texture_pixels[pixel_offset + 1];
-                        b := texture_pixels[pixel_offset + 2];
-                        a := texture_pixels[pixel_offset + 3];
-
-                        z_buffer[index] = depth;
-                        pixels[index] = Color.{r/255.0, g/255.0, b/255.0, a/255.0};
+                        
+                        z_buffer[index] = pixel_depth;
+                        pixels[index] = Color.{
+                            texture_pixels[pixel_offset + 0]/255.0, 
+                            texture_pixels[pixel_offset + 1]/255.0, 
+                            texture_pixels[pixel_offset + 2]/255.0, 
+                            texture_pixels[pixel_offset + 3]/255.0
+                        };
                     }
                 }
 
                 det_a += step_x01;
                 det_b += step_x12;
                 det_c += step_x20;
+                pixel_depth += depth_step_x;
+                pixel_uv    += uv_step_x;
             }
 
             row_det_a += step_y01;
             row_det_b += step_y12;
             row_det_c += step_y20;
+            row_depth += depth_step_y;
+            row_uv    += uv_step_y;
         }
     }
 }
 
-screen_to_viewport :: (using vec: v4f) -> v4f {
+screen_to_viewport :: inline (using vec: v4f) -> v4f {
     return {
         RESOLUTION.x * (0.5 + 0.5 * x),
         RESOLUTION.y * (0.5 - 0.5 * y),
