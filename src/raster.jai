@@ -43,7 +43,11 @@ open_window :: (width: int, height: int, title: string) {
 }
 
 close_window :: () {
-    // Window_Creation module doesn't have destroy window proc ????
+    array_free(pixels);
+    array_free(z_buffer);
+
+    for tiles array_free(it);
+    array_free(tiles);
 }
 
 window_should_close :: () -> bool {
