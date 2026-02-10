@@ -897,6 +897,8 @@ ceil :: (x: float64) -> float64 {
     return y;
 }
 
+ceil_to_int :: (x: float) -> int { return xx ceil(x); }
+
 // Someone in chat asked whether we should just implement floor
 // by casting to int and back ... obviously we would need to check
 // the exponent and return x if it's too high to fit. That might

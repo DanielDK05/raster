@@ -10,11 +10,7 @@
 // - Anti-aliasing
 //
 
-// @todo: make dynamic
-RESOLUTION :: v2i.{1920, 1080};
-TILE_SIZE :: 16;
-TOTAL_TILES :: #run (RESOLUTION.x / TILE_SIZE) * (RESOLUTION.y / TILE_SIZE);
-TITLE :: "raster";
+TILE_SIZE :: 128;
 
 Draw_Call :: struct {
     model     : Model;
@@ -37,31 +33,13 @@ draw :: (draw_call: Draw_Call) {
     array_add(*draw_calls, draw_call);
 }
 
-open_window :: () {
+open_window :: (width: int, height: int, title: string) {
     init_thread_group_stuff();
 
-    window = create_window(RESOLUTION.x, RESOLUTION.y, TITLE);
-
+    window = create_window(width, height, title);
     Simp.set_render_target(window, .LEFT_HANDED);
 
-    pixels   = NewArray(RESOLUTION.x * RESOLUTION.y, Color);
-    z_buffer = NewArray(RESOLUTION.x * RESOLUTION.y, float);
-
-    {
-        using bitmap;
-        width        = xx RESOLUTION.x;
-        height       = xx RESOLUTION.y;
-        mipmap_count = 1;
-
-        bpp := Simp.get_image_bytes_per_texel(.RGBA32F);
-        size := width * height * bpp;
-
-        data         = { data = xx pixels.data, count = pixels.count * 16 };
-        stride       = xx (width*bpp);
-
-        format       = .RGBA32F;
-        flags       |= .FREE_DATA_ON_DEINIT;
-    }
+    resize_viewport({width,height});
 }
 
 close_window :: () {
@@ -89,8 +67,11 @@ begin_drawing :: () {
 }
 
 end_drawing :: () {
-    tiles_across := RESOLUTION.x / TILE_SIZE;
-    tiles_along  := RESOLUTION.y / TILE_SIZE;
+    projection_matrix = make_projection_matrix(60 * PI / 180.0, cast(float)window_width / cast(float)window_height, 0.01, 100);
+    view_matrix       = make_look_at_matrix(camera_transform.position, camera_transform.position + get_forward(camera_transform), V3_UP, x_is_forward=false);
+
+    tiles_across := ceil_to_int(cast(float) window_width / TILE_SIZE);
+    tiles_along  := ceil_to_int(cast(float) window_height / TILE_SIZE);
     total_tiles  := tiles_across * tiles_along;
 
     for draw_calls {
@@ -100,9 +81,7 @@ end_drawing :: () {
         mesh := model.meshes[0];
         i := 0;
 
-        projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
-        view := make_look_at_matrix(camera_transform.position, camera_transform.position + get_forward(camera_transform), V3_UP, x_is_forward=false);
-        mvp := projection * view * transform;
+        mvp := projection_matrix * view_matrix * transform;
 
         while i + 2 < mesh.indices.count {
             v0 := mesh.vertices[mesh.indices[i + 0]];
@@ -118,10 +97,10 @@ end_drawing :: () {
             min_y := min(p0.y, p1.y, p2.y);
             max_y := max(p0.y, p1.y, p2.y);
 
-            tile_start_x := max(0, cast(int)(min_x / TILE_SIZE));
-            tile_end_x   := min(tiles_across - 1, cast(int)(max_x / TILE_SIZE));
-            tile_start_y := max(0, cast(int)(min_y / TILE_SIZE));
-            tile_end_y   := min(tiles_along - 1, cast(int)(max_y / TILE_SIZE));
+            tile_start_x := max(0, floor_to_int(min_x / TILE_SIZE));
+            tile_end_x   := min(tiles_across - 1, ceil_to_int(max_x / TILE_SIZE));
+            tile_start_y := max(0, floor_to_int(min_y / TILE_SIZE));
+            tile_end_y   := min(tiles_along - 1, ceil_to_int(max_y / TILE_SIZE));
 
             for ty: tile_start_y..tile_end_y {
                 for tx: tile_start_x..tile_end_x {
@@ -179,9 +158,12 @@ z_buffer : [] float;
 thread_group: Thread_Group;
 
 draw_calls: [..] Draw_Call;
-tiles: [TOTAL_TILES][..] Tile_Bin;
+tiles: [][..] Tile_Bin;
 
 camera_transform: Transform;
+
+projection_matrix : Matrix4;
+view_matrix       : Matrix4;
 
 Tile_Bin :: struct {
     triangle_start_i: int;
@@ -189,21 +171,15 @@ Tile_Bin :: struct {
 }
 
 draw_tile :: (tile_index: int) {
-    // Number of tiles across the screen
-    TILES_X := RESOLUTION.x / TILE_SIZE;
+    tiles_x := ceil_to_int(cast(float) window_width / TILE_SIZE);
 
-    // Calculate tile coordinates (e.g., tile 5 might be x=1, y=2)
-    tile_x := tile_index % TILES_X;
-    tile_y := tile_index / TILES_X;
+    tile_x := tile_index % tiles_x;
+    tile_y := tile_index / tiles_x;
 
-    // Screen space bounds for this specific tile
     tile_min_x := tile_x * TILE_SIZE;
     tile_min_y := tile_y * TILE_SIZE;
     tile_max_x := tile_min_x + TILE_SIZE;
     tile_max_y := tile_min_y + TILE_SIZE;
-
-    projection := make_projection_matrix(60 * PI / 180.0, cast(float)RESOLUTION.x / cast(float)RESOLUTION.y, 0.01, 100);
-    view := make_look_at_matrix(camera_transform.position, camera_transform.position + get_forward(camera_transform), V3_UP, x_is_forward=false);
 
     for tiles[tile_index] {
         using draw_calls[it.draw_call_idx];
@@ -215,7 +191,7 @@ draw_tile :: (tile_index: int) {
         texture_pixels := cast(*u8) texture.data;
         texture_stride := stbi_format_size(texture.format);
 
-        mvp := projection * view * transform;
+        mvp := projection_matrix * view_matrix * transform;
 
         v0 := mesh.vertices[mesh.indices[it.triangle_start_i + 0]];
         v1 := mesh.vertices[mesh.indices[it.triangle_start_i + 1]];
@@ -246,15 +222,15 @@ draw_tile :: (tile_index: int) {
             continue;
         }
 
-        min_x := max(0, min(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)));
-        max_x := min(RESOLUTION.x, max(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x)));
-        min_y := max(0, min(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)));
-        max_y := min(RESOLUTION.y, max(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y)));;
+        min_x := min(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x));
+        max_x := max(cast(int) floor(p0.x), cast(int) floor(p1.x), cast(int) floor(p2.x));
+        min_y := min(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y));
+        max_y := max(cast(int) floor(p0.y), cast(int) floor(p1.y), cast(int) floor(p2.y));
 
-        render_min_x := max(min_x, tile_min_x);
-        render_max_x := min(max_x, tile_max_x-1);
-        render_min_y := max(min_y, tile_min_y);
-        render_max_y := min(max_y, tile_max_y-1);
+        render_min_x := max(0, min_x, tile_min_x);
+        render_max_x := min(window_width-1, max_x, tile_max_x-1);
+        render_min_y := max(0, min_y, tile_min_y);
+        render_max_y := min(window_height-1, max_y, tile_max_y-1);
 
         inv_det := 1.0 / det012;
 
@@ -290,7 +266,7 @@ draw_tile :: (tile_index: int) {
 
             for x: render_min_x..render_max_x {
                 if (cast(s32,det_a) | cast(s32,det_b) | cast(s32,det_c)) >= 0 {
-                    index := x + y * RESOLUTION.x;
+                    index := x + y * window_width;
                     
                     if pixel_depth < z_buffer[index] {
                         tex_x := cast(s32)(pixel_uv.x * cast(float)texture.width)  % texture.width;
@@ -327,10 +303,34 @@ draw_tile :: (tile_index: int) {
     }
 }
 
+resize_viewport :: (new_dimensions: v2i) {
+    array_resize(*pixels, new_dimensions.x * new_dimensions.y);
+    array_resize(*z_buffer, new_dimensions.x * new_dimensions.y);
+
+    total_tiles := ceil_to_int(cast(float)new_dimensions.x / TILE_SIZE) * ceil_to_int(cast(float)new_dimensions.y / TILE_SIZE);
+    array_resize(*tiles, total_tiles);
+
+    {
+        using bitmap;
+        width        = xx new_dimensions.x;
+        height       = xx new_dimensions.y;
+        mipmap_count = 1;
+
+        bpp := Simp.get_image_bytes_per_texel(.RGBA32F);
+        size := width * height * bpp;
+
+        data         = { data = xx pixels.data, count = pixels.count * 16 };
+        stride       = xx (width*bpp);
+
+        format       = .RGBA32F;
+        flags       |= .FREE_DATA_ON_DEINIT;
+    }
+}
+
 screen_to_viewport :: inline (using vec: v4f) -> v4f {
     return {
-        RESOLUTION.x * (0.5 + 0.5 * x),
-        RESOLUTION.y * (0.5 - 0.5 * y),
+        window_width * (0.5 + 0.5 * x),
+        window_height * (0.5 - 0.5 * y),
         z,
         w,
     };

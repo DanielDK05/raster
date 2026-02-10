@@ -13,6 +13,8 @@ update_input :: () -> bool {
         if it.window == window {
             window_width  = it.width;
             window_height = it.height;
+
+            resize_viewport({it.width, it.height});
         }
     }
 

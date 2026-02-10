@@ -28,7 +28,7 @@ tile_models: [#run cast(int) Tile_Type.COUNT] Model;
 tiles: [MAX_TILES] Tile;
 
 main :: () {
-    open_window();
+    open_window(1920, 1080, "raster example");
     defer close_window();
 
     for * tile_models {
@@ -61,7 +61,7 @@ main :: () {
  
     while !window_should_close() {
         dt := get_delta_time();
-        log("FPS: %", 1/dt);
+        log("FPS: %", 1./dt);
 
         defer reset_temporary_storage();
 
