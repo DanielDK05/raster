@@ -1,7 +1,7 @@
 FREECAM_LOOK_SENSITIVITY :: 0.005;
 FREECAM_SPEED :: 4.0;
 
-MAX_TILES :: 1024;
+MAX_TILES :: 32768;
 
 Tile_Type :: enum {
     GRASS;
@@ -42,18 +42,22 @@ main :: () {
 
     // Building the environment
     {
-        // Grass
-        for x: -5..4
-        for z: -5..4 {
-            add_tile(.GRASS, x, 0, z);
-        }
+        RADIUS :: 40;
 
-        // Water
-        for x: -8..7
-        for z: -8..7 {
-            if x >= -5 && x <= 4 && z >= -5 && z <= 4 continue;
+        for x: -RADIUS..RADIUS-1
+        for z: -RADIUS..RADIUS-1 {
+            dist := get_length({xx x, xx z});
+            if dist > RADIUS continue;
 
-            add_tile(.WATER, x, 0, z);
+            t := dist / cast(float)RADIUS;
+
+            noise_pos := v2f.{ cast(float) x + RADIUS, cast(float) z + RADIUS } * 0.5;
+            noise := perlin2d(noise_pos.x, noise_pos.y, 0.5, 8);
+
+            threshold := 0.2 + (t * 0.8); 
+
+            tile_type := ifx noise >= threshold then Tile_Type.GRASS else .WATER;
+            add_tile(tile_type, x, 0, z);
         }
 
         add_tile(.BUILDING, 0, 0, 0);
@@ -83,7 +87,7 @@ main :: () {
 
             draw({
                 model = model,
-                transform = m4x4(transform),
+                transform = transform,
             });
         }
     }
@@ -157,6 +161,7 @@ hex_grid_pos_to_world_pos :: (hex: v3s) -> v3f {
     return { x, xx hex.y, z };
 }
 
+#load "noise.jai";
 #import,file "raster.jai";
 
 #import "Basic";

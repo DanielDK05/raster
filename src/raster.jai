@@ -15,7 +15,7 @@ TILE_SIZE :: 128;
 Draw_Call :: struct {
     model     : Model;
     cull_mode : Cull_Mode = .BACK;
-    transform : Matrix4   = Matrix4_Identity;
+    transform : Transform;
 }
 
 Cull_Mode :: enum {
@@ -78,6 +78,8 @@ end_drawing :: () {
     tiles_along  := ceil_to_int(cast(float) window_height / TILE_SIZE);
     total_tiles  := tiles_across * tiles_along;
 
+    camera_frustum := make_frustum_from_view_projection_matrix(projection_matrix * view_matrix);
+
     for draw_calls {
         using it;
 
@@ -85,7 +87,36 @@ end_drawing :: () {
         mesh := model.meshes[0];
         i := 0;
 
-        mvp := projection_matrix * view_matrix * transform;
+        found, aabb := table_find(*mesh_bounding_boxes, mesh.id);
+        if !found {
+            min_v := v3f.{  FLOAT32_MAX,  FLOAT32_MAX,  FLOAT32_MAX };
+            max_v := v3f.{ -FLOAT32_MAX, -FLOAT32_MAX, -FLOAT32_MAX };
+
+            for idx : mesh.indices {
+                v := mesh.vertices[idx];
+
+                if v.x < min_v.x then min_v.x = v.x;
+                if v.y < min_v.y then min_v.y = v.y;
+                if v.z < min_v.z then min_v.z = v.z;
+
+                if v.x > max_v.x then max_v.x = v.x;
+                if v.y > max_v.y then max_v.y = v.y;
+                if v.z > max_v.z then max_v.z = v.z;
+            }
+
+            aabb.min = min_v;
+            aabb.max = max_v;
+
+            table_add(*mesh_bounding_boxes, mesh.id, aabb);
+        }
+
+        aabb.min += transform.position;
+        aabb.max += transform.position;
+        if !overlaps(camera_frustum, aabb) {
+            continue;
+        }
+
+        mvp := projection_matrix * view_matrix * m4x4(transform);
 
         while i + 2 < mesh.indices.count {
             v0 := mesh.vertices[mesh.indices[i + 0]];
@@ -163,15 +194,95 @@ thread_group: Thread_Group;
 
 draw_calls: [..] Draw_Call;
 tiles: [][..] Tile_Bin;
+mesh_bounding_boxes: Table(Mesh_ID, Axis_Aligned_Bounding_Box);
 
 camera_transform: Transform;
 
 projection_matrix : Matrix4;
 view_matrix       : Matrix4;
 
+Axis_Aligned_Bounding_Box :: struct {
+    min : v3f;
+    max : v3f;
+}
+
+Frustum :: struct {
+    planes: [6]Plane;
+}
+
+Plane :: struct {
+    normal: v3f;
+    distance: float;
+}
+
 Tile_Bin :: struct {
     triangle_start_i: int;
     draw_call_idx: int;
+}
+
+make_frustum_from_view_projection_matrix :: (m: Matrix4) -> Frustum {
+    f: Frustum;
+
+    // Left plane
+    f.planes[0].normal.x = m._41 + m._11;
+    f.planes[0].normal.y = m._42 + m._12;
+    f.planes[0].normal.z = m._43 + m._13;
+    f.planes[0].distance = m._44 + m._14;
+
+    // Right plane
+    f.planes[1].normal.x = m._41 - m._11;
+    f.planes[1].normal.y = m._42 - m._12;
+    f.planes[1].normal.z = m._43 - m._13;
+    f.planes[1].distance = m._44 - m._14;
+
+    // Bottom plane
+    f.planes[2].normal.x = m._41 + m._21;
+    f.planes[2].normal.y = m._42 + m._22;
+    f.planes[2].normal.z = m._43 + m._23;
+    f.planes[2].distance = m._44 + m._24;
+
+    // Top plane
+    f.planes[3].normal.x = m._41 - m._21;
+    f.planes[3].normal.y = m._42 - m._22;
+    f.planes[3].normal.z = m._43 - m._23;
+    f.planes[3].distance = m._44 - m._24;
+
+    // Near plane
+    f.planes[4].normal.x = m._41 + m._31;
+    f.planes[4].normal.y = m._42 + m._32;
+    f.planes[4].normal.z = m._43 + m._33;
+    f.planes[4].distance = m._44 + m._34;
+
+    // Far plane
+    f.planes[5].normal.x = m._41 - m._31;
+    f.planes[5].normal.y = m._42 - m._32;
+    f.planes[5].normal.z = m._43 - m._33;
+    f.planes[5].distance = m._44 - m._34;
+
+    // Normalize the planes so the dot product represents actual distance
+    for * f.planes {
+        length := get_length(it.normal);
+        it.normal /= length;
+        it.distance /= length;
+    }
+
+    return f;
+}
+
+overlaps :: (f: Frustum, box: Axis_Aligned_Bounding_Box) -> bool {
+    for f.planes {
+        // Find the corner of the AABB that is furthest along the plane normal
+        p: v3f;
+        p.x = ifx it.normal.x > 0 then box.max.x else box.min.x;
+        p.y = ifx it.normal.y > 0 then box.max.y else box.min.y;
+        p.z = ifx it.normal.z > 0 then box.max.z else box.min.z;
+
+        // If this point is on the negative side of the plane, the box is outside
+        if dot(it.normal, p) + it.distance < 0 {
+            return false;
+        }
+    }
+    return true;
 }
 
 draw_tile :: (tile_index: int) {
@@ -188,6 +299,8 @@ draw_tile :: (tile_index: int) {
     for tiles[tile_index] {
         using draw_calls[it.draw_call_idx];
 
+        transform_matrix := m4x4(transform);
+
         mesh := model.meshes[0];
 
         texture := model.textures[0];
@@ -195,7 +308,7 @@ draw_tile :: (tile_index: int) {
         texture_pixels := cast(*u8) texture.data;
         texture_stride := stbi_format_size(texture.format);
 
-        mvp := projection_matrix * view_matrix * transform;
+        mvp := projection_matrix * view_matrix * transform_matrix;
 
         v0 := mesh.vertices[mesh.indices[it.triangle_start_i + 0]];
         v1 := mesh.vertices[mesh.indices[it.triangle_start_i + 1]];

@@ -13,7 +13,7 @@ Mesh :: struct {
 }
 
 Vertex :: struct {
-    position : v3f;
+    using position : v3f;
     normal   : v3f;
     uv       : v2f;
 }
@@ -182,11 +182,11 @@ read_obj_file :: (path: string, flip_uv_vertical := true, yeet_duplicates := fal
     // array_reserve(*indices, vertices.count);
     // for vertices array_add(*indices, xx it_index);
 
-    // current_model_id += 1;
-    // current_mesh_id  += 1;
+    current_model_id += 1;
+    current_mesh_id  += 1;
 
     mesh: Mesh;
-    mesh.id       = 0;
+    mesh.id       = current_mesh_id;
     mesh.vertices = vertices;
     mesh.indices  = indices;
 
@@ -197,7 +197,7 @@ read_obj_file :: (path: string, flip_uv_vertical := true, yeet_duplicates := fal
     textures[0] = texture;
 
     return true, .{
-        id       = 0,
+        id       = current_model_id,
         meshes   = meshes,
         textures = textures,
     };
@@ -212,6 +212,9 @@ get_vertex_hash :: (using vertex: Vertex) -> u32 {
 }
 
 #scope_file;
+
+current_model_id : Model_ID;
+current_mesh_id  : Mesh_ID;
 
 split_whitespace :: (input: string) -> []string {
     split_result := split(trim(input), " ");
